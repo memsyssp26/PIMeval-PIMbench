@@ -142,7 +142,7 @@ pimStatsMgr::showCmdStats() const
     totalMsCompute += it.second.first * percentCompute;
     totalOp += it.second.second.m_totalOp;
   }
-  std::printf(" %44s : %10d %14f %14f %14f %7.2f %7.2f %7.2f\n", "TOTAL ---------", totalCmd, totalMsRuntime, totalMjEnergy, (totalOp * 1.0 / totalMjEnergy * 1e-6), (totalMsRead / totalCmd), (totalMsWrite / totalCmd), (totalMsCompute / totalCmd) );
+  std::printf(" %44s : %10d %14f %14f %14f %7.2f %7.2f %7.2f\n", "TOTAL ---------", totalCmd, totalMsRuntime, totalMjEnergy, (totalOp * 1.0 / totalMjEnergy * 1e-6), (totalMsRead / (1.0 * totalCmd)), (totalMsWrite / (1.0 * totalCmd)), (totalMsCompute / (1.0 * totalCmd)) );
   // analyze micro-ops
   int numR = 0;
   int numW = 0;

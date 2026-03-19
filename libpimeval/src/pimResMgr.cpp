@@ -6,7 +6,9 @@
 
 #include "pimResMgr.h"       // for pimResMgr
 #include "pimDevice.h"       // for pimDevice
+#include "pimEcc.h"          // for pimEcc
 #include <cstdio>            // for printf
+#include <cinttypes>         // for PRIu64
 #include <algorithm>         // for sort, prev
 #include <stdexcept>         // for throw, invalid_argument
 #include <memory>            // for make_unique
@@ -18,7 +20,7 @@
 void
 pimRegion::print(uint64_t regionId) const
 {
-  printf("{ PIM-Region %lu: CoreId = %d, Loc = (%u, %u), Size = (%u, %u) }\n",
+  printf("{ PIM-Region %" PRIu64 ": CoreId = %d, Loc = (%u, %u), Size = (%u, %u) }\n",
          regionId, m_coreId, m_rowIdx, m_colIdx, m_numAllocRows, m_numAllocCols);
 }
 
@@ -63,8 +65,12 @@ pimObjInfo::getBitsPerElement(PimBitWidth bitWidthType) const
 {
   switch (bitWidthType) {
     case PimBitWidth::ACTUAL:
-    case PimBitWidth::SIM:
     case PimBitWidth::HOST:
+      return pimUtils::getNumBitsOfDataType(m_dataType, bitWidthType);
+    case PimBitWidth::SIM:
+      if (m_device->getConfig().isEccEnabled()) {
+        return m_bitsPerElementPadded;
+      }
       return pimUtils::getNumBitsOfDataType(m_dataType, bitWidthType);
     case PimBitWidth::PADDED:
       return m_bitsPerElementPadded;
@@ -196,6 +202,12 @@ pimObjInfo::syncFromSimulatedMem()
 {
   pimObjInfo &obj = (m_refObjId != -1 ? m_device->getResMgr()->getObjInfo(m_refObjId) : *this);
   unsigned numBits = getBitsPerElement(PimBitWidth::SIM);
+  unsigned numBitsWithEcc = numBits;
+  bool eccEnabled = m_device->getConfig().isEccEnabled();
+  if (eccEnabled) {
+    numBitsWithEcc += pimEcc::getNumEccBits(numBits);
+  }
+
   for (size_t i = 0; i < m_regions.size(); ++i) {
     pimRegion& region = m_regions[i];
     PimCoreId coreId = region.getCoreId();
@@ -204,8 +216,17 @@ pimObjInfo::syncFromSimulatedMem()
     uint64_t numElemInRegion = region.getNumElemInRegion();
     for (uint64_t j = 0; j < numElemInRegion; ++j) {
       auto [rowLoc, colLoc] = region.locateIthElemInRegion(j);
-      uint64_t bits = isVLayout() ? core.getBitsV(rowLoc, colLoc, numBits)
-                                  : core.getBitsH(rowLoc, colLoc, numBits);
+      uint64_t bits = isVLayout() ? core.getBitsV(rowLoc, colLoc, numBitsWithEcc)
+                                  : core.getBitsH(rowLoc, colLoc, numBitsWithEcc);
+      if (eccEnabled) {
+        int status = 0;
+        bits = pimEcc::decode(bits, numBits, status);
+        if (status == 1) {
+          // std::printf("PIM-Info: ECC corrected a single bit error for obj %d, index %lu\n", m_objId, elemIdxBegin + j);
+        } else if (status == 2) {
+          std::printf("PIM-Error: ECC detected an uncorrectable double bit error for obj %d, index %" PRIu64 "\n", m_objId, elemIdxBegin + j);
+        }
+      }
       obj.m_data.setElementBits(elemIdxBegin + j, bits);
     }
   }
@@ -217,6 +238,12 @@ pimObjInfo::syncToSimulatedMem() const
 {
   const pimObjInfo &obj = (m_refObjId != -1 ? m_device->getResMgr()->getObjInfo(m_refObjId) : *this);
   unsigned numBits = getBitsPerElement(PimBitWidth::SIM);
+  unsigned numBitsWithEcc = numBits;
+  bool eccEnabled = m_device->getConfig().isEccEnabled();
+  if (eccEnabled) {
+    numBitsWithEcc += pimEcc::getNumEccBits(numBits);
+  }
+
   for (size_t i = 0; i < m_regions.size(); ++i) {
     const pimRegion& region = m_regions[i];
     PimCoreId coreId = region.getCoreId();
@@ -226,12 +253,38 @@ pimObjInfo::syncToSimulatedMem() const
     for (uint64_t j = 0; j < numElemInRegion; ++j) {
       uint64_t bits = 0;
       obj.m_data.getElementBits(elemIdxBegin + j, bits);
+      if (eccEnabled) {
+        bits = pimEcc::encode(bits, numBits);
+      }
       auto [rowLoc, colLoc] = region.locateIthElemInRegion(j);
       if (isVLayout()) {
-        core.setBitsV(rowLoc, colLoc, bits, numBits);
+        core.setBitsV(rowLoc, colLoc, bits, numBitsWithEcc);
       } else {
-        core.setBitsH(rowLoc, colLoc, bits, numBits);
+        core.setBitsH(rowLoc, colLoc, bits, numBitsWithEcc);
       }
+    }
+  }
+}
+
+//! @brief  Inject error to simulated memory
+void
+pimObjInfo::injectError(uint64_t elemIdx, unsigned bitIdx)
+{
+  assert(elemIdx < m_numElements);
+  // Find which region contains this element
+  for (const auto& region : m_regions) {
+    if (elemIdx >= region.getElemIdxBegin() && elemIdx < region.getElemIdxEnd()) {
+      unsigned regionElemIdx = elemIdx - region.getElemIdxBegin();
+      auto [rowLoc, colLoc] = region.locateIthElemInRegion(regionElemIdx);
+      pimCore& core = m_device->getCore(region.getCoreId());
+      if (isVLayout()) {
+        bool val = core.getBit(rowLoc + bitIdx, colLoc);
+        core.setBit(rowLoc + bitIdx, colLoc, !val);
+      } else {
+        bool val = core.getBit(rowLoc, colLoc + bitIdx);
+        core.setBit(rowLoc, colLoc + bitIdx, !val);
+      }
+      return;
     }
   }
 }
@@ -262,7 +315,7 @@ PimObjId
 pimResMgr::pimAlloc(PimAllocEnum allocType, uint64_t numElements, PimDataType dataType)
 {
   if (m_debugAlloc) {
-    printf("PIM-Debug: pimAlloc: Request: %s %lu elements of type %s\n",
+    printf("PIM-Debug: pimAlloc: Request: %s %" PRIu64 " elements of type %s\n",
            pimUtils::pimAllocEnumToStr(allocType).c_str(), numElements,
            pimUtils::pimDataTypeEnumToStr(dataType).c_str());
   }
@@ -273,6 +326,9 @@ pimResMgr::pimAlloc(PimAllocEnum allocType, uint64_t numElements, PimDataType da
   }
 
   unsigned bitsPerElement = pimUtils::getNumBitsOfDataType(dataType, PimBitWidth::SIM);
+  if (m_device->getConfig().isEccEnabled()) {
+    bitsPerElement += pimEcc::getNumEccBits(bitsPerElement);
+  }
 
   std::vector<PimCoreId> sortedCoreId = getCoreIdsSortedByLeastUsage();
   pimObjInfo newObj(m_availObjId, dataType, allocType, numElements, bitsPerElement, m_device);
@@ -315,11 +371,11 @@ pimResMgr::pimAlloc(PimAllocEnum allocType, uint64_t numElements, PimDataType da
   }
 
   if (m_debugAlloc) {
-    printf("PIM-Debug: pimAlloc: Allocate %lu regions among %u cores\n",
+    printf("PIM-Debug: pimAlloc: Allocate %" PRIu64 " regions among %u cores\n",
            numRegions, numCores);
-    printf("PIM-Debug: pimAlloc: Each region has %u rows x %u cols with %lu elements\n",
+    printf("PIM-Debug: pimAlloc: Each region has %u rows x %u cols with %" PRIu64 " elements\n",
            numRowsToAlloc, numCols, numElemPerRegion);
-    printf("PIM-Debug: pimAlloc: Last region has %u rows x %u cols with %lu elements\n",
+    printf("PIM-Debug: pimAlloc: Last region has %u rows x %u cols with %" PRIu64 " elements\n",
            numRowsToAlloc, numColsToAllocLast, numElemPerRegionLast);
   }
 
@@ -401,6 +457,9 @@ pimResMgr::pimAllocBuffer(uint32_t numElements, PimDataType dataType)
   }
 
   unsigned bitsPerElement = pimUtils::getNumBitsOfDataType(dataType, PimBitWidth::SIM);
+  if (m_device->getConfig().isEccEnabled()) {
+    bitsPerElement += pimEcc::getNumEccBits(bitsPerElement);
+  }
 
   if (numElements * bitsPerElement > m_device->getBufferSize() * 8) {
     printf("PIM-Error: pimAlloc: Invalid input parameter: %u elements exceeds buffer size %u bytes\n",
@@ -427,10 +486,10 @@ pimResMgr::pimAllocBuffer(uint32_t numElements, PimDataType dataType)
   numColsPerElem = bitsPerElement;
 
   if (m_debugAlloc) {
-    printf("PIM-Debug: pimAlloc: Allocate %lu regions\n", numRegions);
-    printf("PIM-Debug: pimAlloc: Each region has %u rows x %u cols with %lu elements\n",
+    printf("PIM-Debug: pimAlloc: Allocate %" PRIu64 " regions\n", numRegions);
+    printf("PIM-Debug: pimAlloc: Each region has %u rows x %u cols with %" PRIu64 " elements\n",
            numRowsToAlloc, numCols, numElemPerRegion);
-    printf("PIM-Debug: pimAlloc: Last region has %u rows x %u cols with %lu elements\n",
+    printf("PIM-Debug: pimAlloc: Last region has %u rows x %u cols with %" PRIu64 " elements\n",
            numRowsToAlloc, numColsToAllocLast, numElemPerRegionLast);
   }
 
@@ -508,6 +567,9 @@ pimResMgr::pimAllocAssociated(PimObjId assocId, PimDataType dataType)
   PimAllocEnum allocType = assocObj.getAllocType();
   uint64_t numElements = assocObj.getNumElements();
   unsigned bitsPerElement = pimUtils::getNumBitsOfDataType(dataType, PimBitWidth::SIM);
+  if (m_device->getConfig().isEccEnabled()) {
+    bitsPerElement += pimEcc::getNumEccBits(bitsPerElement);
+  }
   unsigned bitsPerElementAssoc = assocObj.getBitsPerElement(PimBitWidth::PADDED);
   if (allocType == PIM_ALLOC_V || allocType == PIM_ALLOC_V1) {
     if (m_debugAlloc) {
@@ -600,8 +662,9 @@ pimResMgr::pimAllocAssociated(PimObjId assocId, PimDataType dataType)
       newRegion.setElemIdxBegin(elemIdx);
       elemIdx += (regionIdx == numRegions - 1 ? numElemPerRegionLast : numElemPerRegion);
       if (elemIdx != region.getElemIdxEnd()) {
-        printf("PIM-Error: pimAllocAssociated: Mismatch in element index range: %lu vs %lu\n",
+        printf("PIM-Error: pimAllocAssociated: Mismatch in element index range: %" PRIu64 " vs %" PRIu64 "\n",
                elemIdx, region.getElemIdxEnd());
+
         success = false;
         break;
       }
@@ -692,6 +755,18 @@ pimResMgr::pimFree(PimObjId objId)
   if (m_debugAlloc) {
     printf("PIM-Debug: pimFree: Deleted object %d\n", objId);
   }
+  return true;
+}
+
+bool
+pimResMgr::pimInjectError(PimObjId objId, uint64_t elemIdx, unsigned bitIdx)
+{
+  if (m_objMap.find(objId) == m_objMap.end()) {
+    printf("PIM-Error: pimInjectError: Invalid PIM object ID %d\n", objId);
+    return false;
+  }
+  pimObjInfo& obj = m_objMap.at(objId);
+  obj.injectError(elemIdx, bitIdx);
   return true;
 }
 
@@ -866,4 +941,3 @@ pimResMgr::isHybridLayoutObj(PimObjId objId) const
 {
   return false;
 }
-

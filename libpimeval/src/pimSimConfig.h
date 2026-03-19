@@ -93,6 +93,7 @@ public:
   bool isAnalysisMode() const { return m_analysisMode; }
   unsigned getDebug() const { return m_debug; }
   bool isLoadBalanced() const { return m_loadBalanced; }
+  bool isEccEnabled() const { return m_eccEnabled; }
 
   enum pimDebugFlags
   {
@@ -125,6 +126,7 @@ private:
   bool deriveNumThreads();
   bool deriveMiscEnvVars();
   bool deriveLoadBalance();
+  bool deriveEcc();
 
   bool parseConfigFromFile(const std::string& config, unsigned& numRanks, unsigned& numBankPerRank, unsigned& numSubarrayPerBank, unsigned& numRows, unsigned& numCols);
 
@@ -139,6 +141,7 @@ private:
   inline static const std::string m_cfgVarMaxNumThreads = "max_num_threads";
   inline static const std::string m_cfgVarLoadBalance = "should_load_balance";
   inline static const std::string m_cfgVarBufferSize = "buffer_size";
+  inline static const std::string m_cfgVarEcc = "ecc_enabled";
 
   // Environment variables
   inline static const std::string m_envVarSimConfig = "PIMEVAL_SIM_CONFIG";
@@ -154,6 +157,7 @@ private:
   inline static const std::string m_envVarAnalysisMode = "PIMEVAL_ANALYSIS_MODE";
   inline static const std::string m_envVarDebug = "PIMEVAL_DEBUG";
   inline static const std::string m_envVarLoadBalance = "PIMEVAL_LOAD_BALANCE";
+  inline static const std::string m_envVarEcc = "PIMEVAL_ECC";
 
   // Add env vars to this list for readEnvVars
   inline static const std::vector<std::string> m_envVarList = {
@@ -170,6 +174,7 @@ private:
     m_envVarDebug,
     m_envVarLoadBalance,
     m_envVarBufferSize,
+    m_envVarEcc,
   };
 
   // Default values if not specified during init
@@ -180,6 +185,7 @@ private:
   static constexpr int DEFAULT_NUM_COL_PER_SUBARRAY = 8192;
   static constexpr int DEFAULT_BUFFER_SIZE = 0;
   static constexpr PimDeviceEnum DEFAULT_SIM_TARGET = PIM_DEVICE_BANK_LEVEL;
+  static constexpr bool DEFAULT_ECC = false;
 
   //! @brief  Reset all member variables to default status
   inline void reset() {
@@ -198,6 +204,7 @@ private:
     m_analysisMode = false;
     m_debug = 0;
     m_loadBalanced = false;
+    m_eccEnabled = DEFAULT_ECC;
     m_envParams.clear();
     m_cfgParams.clear();
     m_isInit = false;
@@ -219,6 +226,7 @@ private:
   bool m_analysisMode;
   unsigned m_debug;
   bool m_loadBalanced;
+  bool m_eccEnabled;
 
   // Store original parameters for extension purpose
   std::unordered_map<std::string, std::string> m_envParams;

@@ -201,6 +201,12 @@ pimDevice::pimFree(PimObjId obj)
   return m_resMgr->pimFree(obj);
 }
 
+bool
+pimDevice::pimInjectError(PimObjId obj, uint64_t elemIdx, unsigned bitIdx)
+{
+  return m_resMgr->pimInjectError(obj, elemIdx, bitIdx);
+}
+
 //! @brief  Create an obj referencing to a range of an existing obj
 PimObjId
 pimDevice::pimCreateRangedRef(PimObjId refId, uint64_t idxBegin, uint64_t idxEnd)

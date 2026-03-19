@@ -111,6 +111,13 @@ pimFree(PimObjId obj)
   return ok ? PIM_OK : PIM_ERROR;
 }
 
+PimStatus
+pimInjectError(PimObjId obj, uint64_t elemIdx, unsigned bitIdx)
+{
+  bool ok = pimSim::get()->pimInjectError(obj, elemIdx, bitIdx);
+  return ok ? PIM_OK : PIM_ERROR;
+}
+
 //! @brief  Create an obj referencing to a range of an existing obj
 PimObjId
 pimCreateRangedRef(PimObjId refId, uint64_t idxBegin, uint64_t idxEnd)

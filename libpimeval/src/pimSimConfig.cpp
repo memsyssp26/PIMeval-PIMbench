@@ -12,7 +12,6 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
-#include <filesystem>
 
 
 //! @brief  Init PIMeval simulation configuration parameters at device creation
@@ -58,6 +57,7 @@ pimSimConfig::show() const
 
   std::printf("PIM-Config: Number of Threads = %u\n", m_numThreads);
   std::printf("PIM-Config: Load Balanced = %s\n", m_loadBalanced ? "1" : "0");
+  std::printf("PIM-Config: ECC Enabled = %s\n", m_eccEnabled ? "1" : "0");
   std::printf("----------------------------------------\n");
 }
 
@@ -91,6 +91,7 @@ pimSimConfig::deriveConfig(PimDeviceEnum deviceType,
   ok = ok & deriveNumThreads();
   ok = ok & deriveMiscEnvVars();
   ok = ok & deriveLoadBalance();
+  ok = ok & deriveEcc();
 
   // Show summary
   show();
@@ -452,3 +453,30 @@ pimSimConfig::deriveLoadBalance()
   return true;
 }
 
+//! @brief  Derive Params: ECC
+bool
+pimSimConfig::deriveEcc()
+{
+  m_eccEnabled = DEFAULT_ECC;
+
+  // Check config file then env variable
+  bool hasVal = false;
+  std::string valStr = pimUtils::getOptionalParam(m_cfgParams, m_cfgVarEcc, hasVal);
+  if (hasVal) {
+    if (valStr != "0" && valStr != "1") {
+      std::printf("PIM-Error: Incorrect config file parameter: %s=%s\n", m_cfgVarEcc.c_str(), valStr.c_str());
+      return false;
+    }
+    m_eccEnabled = (valStr == "1");
+  } else {
+    valStr = pimUtils::getOptionalParam(m_envParams, m_envVarEcc, hasVal);
+    if (hasVal) {
+      if (valStr != "0" && valStr != "1") {
+        std::printf("PIM-Error: Incorrect environment variable: %s=%s\n", m_envVarEcc.c_str(), valStr.c_str());
+        return false;
+      }
+      m_eccEnabled = (valStr == "1");
+    }
+  }
+  return true;
+}

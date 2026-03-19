@@ -316,8 +316,8 @@ pimCmdCopy::updateStats() const
     if (!m_copyFullRange) {
       numElements = m_idxEnd - m_idxBegin;
     }
-    unsigned bitsPerElement = objDest.getBitsPerElement(PimBitWidth::ACTUAL);
-    pimeval::perfEnergy mPerfEnergy = pimSim::get()->getPerfEnergyModel()->getPerfEnergyForBytesTransfer(m_cmdType, numElements * bitsPerElement / 8);
+    unsigned bitsPerElement = objDest.getBitsPerElement(PimBitWidth::SIM);
+    pimeval::perfEnergy mPerfEnergy = m_device->getPerfEnergyModel()->getPerfEnergyForBytesTransfer(m_cmdType, numElements * bitsPerElement / 8);
     pimSim::get()->getStatsMgr()->recordCopyMainToDevice(numElements * bitsPerElement, mPerfEnergy);
 
     if (m_debugCmds) {
@@ -330,8 +330,8 @@ pimCmdCopy::updateStats() const
     if (!m_copyFullRange) {
       numElements = m_idxEnd - m_idxBegin;
     }
-    unsigned bitsPerElement = objSrc.getBitsPerElement(PimBitWidth::ACTUAL);
-    pimeval::perfEnergy mPerfEnergy = pimSim::get()->getPerfEnergyModel()->getPerfEnergyForBytesTransfer(m_cmdType, numElements * bitsPerElement / 8);
+    unsigned bitsPerElement = objSrc.getBitsPerElement(PimBitWidth::SIM);
+    pimeval::perfEnergy mPerfEnergy = m_device->getPerfEnergyModel()->getPerfEnergyForBytesTransfer(m_cmdType, numElements * bitsPerElement / 8);
     pimSim::get()->getStatsMgr()->recordCopyDeviceToMain(numElements * bitsPerElement, mPerfEnergy);
 
     if (m_debugCmds) {
@@ -344,8 +344,8 @@ pimCmdCopy::updateStats() const
     if (!m_copyFullRange) {
       numElements = m_idxEnd - m_idxBegin;
     }
-    unsigned bitsPerElement = objSrc.getBitsPerElement(PimBitWidth::ACTUAL);
-    pimeval::perfEnergy mPerfEnergy = pimSim::get()->getPerfEnergyModel()->getPerfEnergyForBytesTransfer(m_cmdType, numElements * bitsPerElement / 8);
+    unsigned bitsPerElement = objSrc.getBitsPerElement(PimBitWidth::SIM);
+    pimeval::perfEnergy mPerfEnergy = m_device->getPerfEnergyModel()->getPerfEnergyForBytesTransfer(m_cmdType, numElements * bitsPerElement / 8);
     pimSim::get()->getStatsMgr()->recordCopyDeviceToDevice(numElements * bitsPerElement, mPerfEnergy);
 
     if (m_debugCmds) {

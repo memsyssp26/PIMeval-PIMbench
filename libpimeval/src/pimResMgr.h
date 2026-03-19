@@ -9,6 +9,7 @@
 
 #include "libpimeval.h"      // for PimObjId, PimDataType
 #include "pimUtils.h"        // for getNumBitsOfDataType, signExt, pimDataTypeEnumToStr, castTypeToBits
+#include <cinttypes>
 #include <vector>            // for vector
 #include <unordered_map>     // for unordered_map
 #include <set>               // for set
@@ -143,7 +144,7 @@ public:
 
   // print all bytes for debugging
   void print() const {
-    printf("PIM obj data holder: data-type = %s, num-elements = %lu, bytes-per-element = %u\n",
+    printf("PIM obj data holder: data-type = %s, num-elements = %" PRIu64 ", bytes-per-element = %u\n",
            pimUtils::pimDataTypeEnumToStr(m_dataType).c_str(), m_numElements, m_bytesPerElement);
     for (size_t i = 0; i < m_data.size(); ++i) {
       std::printf(" %02x", m_data[i]);
@@ -247,6 +248,7 @@ public:
   // to sync the data between this PIM data holder and simulated memory arrays.
   void syncFromSimulatedMem();
   void syncToSimulatedMem() const;
+  void injectError(uint64_t elemIdx, unsigned bitIdx);
 
 private:
   PimObjId m_objId = -1;
@@ -282,6 +284,7 @@ public:
   PimObjId pimAllocAssociated(PimObjId assocId, PimDataType dataType);
   PimObjId pimAllocBuffer(uint32_t numElements, PimDataType dataType);
   bool pimFree(PimObjId objId);
+  bool pimInjectError(PimObjId objId, uint64_t elemIdx, unsigned bitIdx);
   PimObjId pimCreateRangedRef(PimObjId refId, uint64_t idxBegin, uint64_t idxEnd);
   PimObjId pimCreateDualContactRef(PimObjId refId);
 

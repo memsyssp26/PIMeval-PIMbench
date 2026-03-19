@@ -21,11 +21,11 @@ pimPerfEnergyBitSerial::getPerfEnergyBitSerial(PimDeviceEnum deviceType, PimCmdE
   double msRuntime = 0.0;
   double mjEnergy = 0.0;
   unsigned numCores = objSrc1.getNumCoreAvailable();
-  unsigned bitsPerElement = objSrc1.getBitsPerElement(PimBitWidth::ACTUAL);
+  unsigned bitsPerElement = objSrc1.getBitsPerElement(PimBitWidth::SIM);
   PimDataType dataType = objSrc1.getDataType();
   // workaround: special handling for pimAdd bool + bool = int
   if (cmdType == PimCmdEnum::ADD) {
-    bitsPerElement = objDest.getBitsPerElement(PimBitWidth::ACTUAL);
+    bitsPerElement = objDest.getBitsPerElement(PimBitWidth::SIM);
     dataType = objDest.getDataType();
   }
   double msRead = 0.0;
@@ -46,6 +46,7 @@ pimPerfEnergyBitSerial::getPerfEnergyBitSerial(PimDeviceEnum deviceType, PimCmdE
       unsigned numR = 0, numW = 0, numL = 0;
       auto it1 = pimPerfEnergyTables::bitsimdPerfTable.find(deviceType);
       if (it1 != pimPerfEnergyTables::bitsimdPerfTable.end()) {
+        // Use PIM_INT32/64 etc for lookup even if ECC is enabled
         auto it2 = it1->second.find(dataType);
         if (it2 != it1->second.end()) {
           auto it3 = it2->second.find(cmdType);
@@ -63,8 +64,8 @@ pimPerfEnergyBitSerial::getPerfEnergyBitSerial(PimDeviceEnum deviceType, PimCmdE
         // pimSub: int - bool = int
         if (cmdType == PimCmdEnum::ADD || cmdType == PimCmdEnum::SUB) {
           if (pimUtils::isSigned(dataType) || pimUtils::isUnsigned(dataType)) {
-            unsigned numBitsSrc1 = pimUtils::getNumBitsOfDataType(objSrc1.getDataType(), PimBitWidth::ACTUAL);
-            unsigned numBitsSrc2 = pimUtils::getNumBitsOfDataType(objSrc2.getDataType(), PimBitWidth::ACTUAL);
+            unsigned numBitsSrc1 = pimUtils::getNumBitsOfDataType(objSrc1.getDataType(), PimBitWidth::SIM);
+            unsigned numBitsSrc2 = pimUtils::getNumBitsOfDataType(objSrc2.getDataType(), PimBitWidth::SIM);
             numR = numBitsSrc1 + numBitsSrc2;
           }
         }
@@ -73,9 +74,16 @@ pimPerfEnergyBitSerial::getPerfEnergyBitSerial(PimDeviceEnum deviceType, PimCmdE
         msRead += m_tR * numR;
         msWrite += m_tW * numW;
         msLogic += m_tL * numL;
+        // Scale by bit width
+        unsigned bitsActual = pimUtils::getNumBitsOfDataType(dataType, PimBitWidth::ACTUAL);
+        double scale = (double)bitsPerElement / bitsActual;
+        msRead *= scale;
+        msWrite *= scale;
+        msLogic *= scale;
+        
         totalOp += objSrc1.getNumElements();
         msRuntime += msRead + msWrite + msLogic;
-        mjEnergy += ((m_eL * numL * objSrc1.getMaxElementsPerRegion()) + (m_eAP * numR + m_eAP * numW)) * numCores;
+        mjEnergy += ((m_eL * numL * scale * objSrc1.getMaxElementsPerRegion()) + (m_eAP * numR * scale + m_eAP * numW * scale)) * numCores;
         mjEnergy += m_pBChip * m_numChipsPerRank * m_numRanks * msRuntime;
       }
       // handle bit-serial operations not in the above table
@@ -199,8 +207,8 @@ pimPerfEnergyBitSerial::getPerfEnergyTypeConversion(PimDeviceEnum deviceType, Pi
         msRuntime = 1000000;
         break;
       }
-      unsigned bitsPerElementSrc = objSrc.getBitsPerElement(PimBitWidth::ACTUAL);
-      unsigned bitsPerElementDest = objDest.getBitsPerElement(PimBitWidth::ACTUAL);
+      unsigned bitsPerElementSrc = objSrc.getBitsPerElement(PimBitWidth::SIM);
+      unsigned bitsPerElementDest = objDest.getBitsPerElement(PimBitWidth::SIM);
       // integer type conversion
       unsigned numR = std::min(bitsPerElementSrc, bitsPerElementDest);
       unsigned numW = bitsPerElementDest;
@@ -226,7 +234,7 @@ pimPerfEnergyBitSerial::getPerfEnergyTypeConversion(PimDeviceEnum deviceType, Pi
 
 //! @brief  Perf energy model of bit-serial PIM for func1
 pimeval::perfEnergy
-pimPerfEnergyBitSerial::getPerfEnergyForFunc1(PimCmdEnum cmdType, const pimObjInfo& objSrc, const pimObjInfo& objDest) const
+pimPerfEnergyBitSerial::getPerfEnergyForFunc1(PimCmdEnum cmdType, const pimObjInfo& obj, const pimObjInfo& objDest) const
 {
   pimeval::perfEnergy perf;
   switch (m_simTarget) {
@@ -237,10 +245,10 @@ pimPerfEnergyBitSerial::getPerfEnergyForFunc1(PimCmdEnum cmdType, const pimObjIn
     {
       // handle type conversion specially
       if (cmdType == PimCmdEnum::CONVERT_TYPE) {
-        perf = getPerfEnergyTypeConversion(m_simTarget, cmdType, objSrc, objDest);
+        perf = getPerfEnergyTypeConversion(m_simTarget, cmdType, obj, objDest);
       } else {
-        unsigned numPass = objSrc.getMaxNumRegionsPerCore();
-        perf = getPerfEnergyBitSerial(m_simTarget, cmdType, numPass, objSrc, objSrc, objDest);
+        unsigned numPass = obj.getMaxNumRegionsPerCore();
+        perf = getPerfEnergyBitSerial(m_simTarget, cmdType, numPass, obj, obj, objDest);
       }
       break;
     }
@@ -283,7 +291,7 @@ pimPerfEnergyBitSerial::getPerfEnergyForReduction(PimCmdEnum cmdType, const pimO
   double msCompute = 0.0;
   uint64_t totalOp = 0;
   PimDataType dataType = obj.getDataType();
-  unsigned bitsPerElement = obj.getBitsPerElement(PimBitWidth::ACTUAL);
+  unsigned bitsPerElement = obj.getBitsPerElement(PimBitWidth::SIM);
   uint64_t numElements = obj.getNumElements();
   unsigned maxElementsPerRegion = obj.getMaxElementsPerRegion();
   unsigned numCore = obj.getNumCoresUsed();
@@ -394,7 +402,7 @@ pimPerfEnergyBitSerial::getPerfEnergyForBroadcast(PimCmdEnum cmdType, const pimO
   double msWrite = 0.0;
   double msCompute = 0.0;
   unsigned numPass = obj.getMaxNumRegionsPerCore();
-  unsigned bitsPerElement = obj.getBitsPerElement(PimBitWidth::ACTUAL);
+  unsigned bitsPerElement = obj.getBitsPerElement(PimBitWidth::SIM);
   unsigned maxElementsPerRegion = obj.getMaxElementsPerRegion();
   unsigned numCore = obj.getNumCoresUsed();
   uint64_t totalOp = 0;
@@ -448,7 +456,7 @@ pimPerfEnergyBitSerial::getPerfEnergyForRotate(PimCmdEnum cmdType, const pimObjI
   double msCompute = 0.0;
   uint64_t totalOp = 0;
   unsigned numPass = obj.getMaxNumRegionsPerCore();
-  unsigned bitsPerElement = obj.getBitsPerElement(PimBitWidth::ACTUAL);
+  unsigned bitsPerElement = obj.getBitsPerElement(PimBitWidth::SIM);
   unsigned numRegions = obj.getRegions().size();
   unsigned numCore = obj.getNumCoreAvailable();
   // boundary handling - assume two times copying between device and host for boundary elements
