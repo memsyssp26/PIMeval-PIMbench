@@ -53,12 +53,20 @@ public:
   //! @brief  Directly set a bit for functional simulation
   inline void setBit(unsigned rowIdx, unsigned colIdx, bool val) {
     assert(rowIdx < m_numRows && colIdx < m_numCols);
-    m_array[rowIdx][colIdx] = val;
+    if (m_rows[rowIdx].empty()) {
+      if (!val) return;
+      m_rows[rowIdx].resize(m_bytesPerRow, 0);
+    }
+    uint8_t mask = 1 << (colIdx & 7);
+    if (val) m_rows[rowIdx][colIdx >> 3] |= mask;
+    else m_rows[rowIdx][colIdx >> 3] &= ~mask;
   }
   //! @brief  Directly get a bit for functional simulation
   inline bool getBit(unsigned rowIdx, unsigned colIdx) const {
     assert(rowIdx < m_numRows && colIdx < m_numCols);
-    return m_array[rowIdx][colIdx];
+    if (m_rows[rowIdx].empty()) return false;
+    uint8_t mask = 1 << (colIdx & 7);
+    return (m_rows[rowIdx][colIdx >> 3] & mask) != 0;
   }
   //! @brief  Directly set #numBits bits for V-layout functional simulation
   inline void setBitsV(unsigned rowIdx, unsigned colIdx, uint64_t val, unsigned numBits) {
@@ -141,8 +149,9 @@ private:
   PimCoreId m_coreId;
   unsigned m_numRows;
   unsigned m_numCols;
+  unsigned m_bytesPerRow;
 
-  std::vector<std::vector<bool>> m_array;
+  std::vector<std::vector<uint8_t>> m_rows;
   std::vector<bool> m_senseAmpCol;
 
   std::map<PimRowReg, std::vector<bool>> m_rowRegs;

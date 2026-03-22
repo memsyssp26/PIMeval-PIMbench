@@ -13,9 +13,11 @@
 
 //! @brief  pimCore ctor
 pimCore::pimCore(unsigned numRows, unsigned numCols)
-  : m_numRows(numRows),
+  : m_coreId(0),
+    m_numRows(numRows),
     m_numCols(numCols),
-    m_array(numRows, std::vector<bool>(numCols)),
+    m_bytesPerRow((numCols + 7) >> 3),
+    m_rows(numRows),
     m_senseAmpCol(numRows)
 {
   // Initialize memory contents with random 0/1
@@ -25,7 +27,7 @@ pimCore::pimCore(unsigned numRows, unsigned numCols)
     std::uniform_int_distribution<int> dist(0, 1);
     for (unsigned row = 0; row < m_numRows; ++row) {
       for (unsigned col = 0; col < m_numCols; ++col) {
-        m_array[row][col] = dist(gen);
+        setBit(row, col, dist(gen));
       }
     }
   }
@@ -56,7 +58,14 @@ pimCore::readRow(unsigned rowIndex)
     std::printf("PIM-Error: Out-of-boundary subarray row read: index = %u, numRows = %u\n", rowIndex, m_numRows);
     return false;
   }
-  m_rowRegs[PIM_RREG_SA] = m_array[rowIndex];
+  std::vector<bool>& sa = m_rowRegs[PIM_RREG_SA];
+  if (m_rows[rowIndex].empty()) {
+    std::fill(sa.begin(), sa.end(), false);
+  } else {
+    for (unsigned col = 0; col < m_numCols; ++col) {
+      sa[col] = getBit(rowIndex, col);
+    }
+  }
   return true;
 }
 
@@ -69,7 +78,7 @@ pimCore::readCol(unsigned colIndex)
     return false;
   }
   for (unsigned row = 0; row < m_numRows; ++row) {
-    m_senseAmpCol[row] = m_array[row][colIndex];
+    m_senseAmpCol[row] = getBit(row, colIndex);
   }
   return true;
 }
@@ -96,14 +105,14 @@ pimCore::readMultiRows(const std::vector<std::pair<unsigned, bool>>& rowIdxs)
     for (const auto& kv : rowIdxs) {
       unsigned idx = kv.first;
       bool isDCCN = kv.second;
-      bool val = (isDCCN ? !m_array[idx][col] : m_array[idx][col]);
+      bool val = (isDCCN ? !getBit(idx, col) : getBit(idx, col));
       sum += val ? 1 : 0;
     }
     bool maj = (sum > rowIdxs.size() / 2);
     for (const auto& kv : rowIdxs) {
       unsigned idx = kv.first;
       bool isDCCN = kv.second;
-      m_array[idx][col] = (isDCCN ? !maj : maj);
+      setBit(idx, col, (isDCCN ? !maj : maj));
     }
     m_rowRegs[PIM_RREG_SA][col] = maj;
   }
@@ -128,7 +137,7 @@ pimCore::writeMultiRows(const std::vector<std::pair<unsigned, bool>>& rowIdxs)
     for (const auto& kv : rowIdxs) {
       unsigned idx = kv.first;
       bool isDCCN = kv.second;
-      m_array[idx][col] = (isDCCN ? !val :val);
+      setBit(idx, col, (isDCCN ? !val : val));
     }
   }
   return true;
@@ -142,7 +151,10 @@ pimCore::writeRow(unsigned rowIndex)
     std::printf("PIM-Error: Out-of-boundary subarray row write: index = %u, numRows = %u\n", rowIndex, m_numRows);
     return false;
   }
-  m_array[rowIndex] = m_rowRegs[PIM_RREG_SA];
+  const std::vector<bool>& sa = m_rowRegs[PIM_RREG_SA];
+  for (unsigned col = 0; col < m_numCols; ++col) {
+    setBit(rowIndex, col, sa[col]);
+  }
   return true;
 }
 
@@ -155,7 +167,7 @@ pimCore::writeCol(unsigned colIndex)
     return false;
   }
   for (unsigned row = 0; row < m_numRows; ++row) {
-    m_array[row][colIndex] = m_senseAmpCol[row];
+    setBit(row, colIndex, m_senseAmpCol[row]);
   }
   return true;
 }
@@ -191,30 +203,30 @@ pimCore::print() const
   std::ostringstream oss;
   // header
   oss << "  Row S ";
-  for (unsigned col = 0; col < m_array[0].size(); ++col) {
+  for (unsigned col = 0; col < m_numCols; ++col) {
     oss << (col % 8 == 0 ? '+' : '-');
   }
   oss << std::endl;
-  for (unsigned row = 0; row < m_array.size(); ++row) {
+  for (unsigned row = 0; row < m_numRows; ++row) {
     // row index
     oss << std::setw(5) << row << ' ';
     // col SA
     oss << m_senseAmpCol[row] << ' ';
     // row contents
-    for (unsigned col = 0; col < m_array[0].size(); ++col) {
-      oss << m_array[row][col];
+    for (unsigned col = 0; col < m_numCols; ++col) {
+      oss << getBit(row, col);
     }
     oss << std::endl;
   }
   // footer
   oss << "        ";
-  for (unsigned col = 0; col < m_array[0].size(); ++col) {
+  for (unsigned col = 0; col < m_numCols; ++col) {
     oss << (col % 8 == 0 ? '+' : '-');
   }
   oss << std::endl;
   // row SA
   oss << "     SA ";
-  for (unsigned col = 0; col < m_array[0].size(); ++col) {
+  for (unsigned col = 0; col < m_numCols; ++col) {
     oss << m_rowRegs.at(PIM_RREG_SA)[col];
   }
   oss << std::endl;
