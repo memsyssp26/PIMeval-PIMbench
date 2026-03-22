@@ -11,6 +11,7 @@
 #include "pimPerfEnergyBankLevel.h"
 #include "pimPerfEnergyAquabolt.h"
 #include "pimPerfEnergyAim.h"
+#include "pimSim.h"
 #include <cstdint>
 #include <cstdio>
 
@@ -87,24 +88,42 @@ pimPerfEnergyBase::getPerfEnergyForBytesTransfer(PimCmdEnum cmdType, uint64_t nu
   double msWrite = 0.0;
   double msCompute = 0.0;
   uint64_t mTotalOP = 0;
-  double msRuntime = static_cast<double>(numBytes) / (m_typicalRankBW * m_numRanks * 1024 * 1024 * 1024 / 1000);
+  double msRuntime = static_cast<double>(numBytes) / (m_typicalRankBW * m_numRanks * 1024.0 * 1024.0 * 1024.0 / 1000.0);
+  
+  // Add ECC overhead if enabled
+  const pimSimConfig& config = pimSim::get()->getConfig();
+  if (config.isEccEnabled()) {
+    const pimEccStrategy* eccStrategy = config.getEccStrategy();
+    if (eccStrategy) {
+      unsigned granularity = config.getEccGranularity();
+      if (granularity == 0) granularity = 64; // Default to 64 bits if not specified
+      uint64_t numBlocks = (numBytes * 8 + granularity - 1) / granularity;
+      
+      double eccLatencyMs = eccStrategy->getLatencyNs() / 1000000.0;
+      double eccEnergyMj = eccStrategy->getEnergyPj() / 1000000000.0;
+      
+      msRuntime += numBlocks * eccLatencyMs;
+      mjEnergy += numBlocks * eccEnergyMj;
+    }
+  }
+
   switch (cmdType) {
     case PimCmdEnum::COPY_H2D:
     {
-      mjEnergy = m_eW * msRuntime * m_numChipsPerRank * m_numRanks;
+      mjEnergy += m_eW * msRuntime * m_numChipsPerRank * m_numRanks;
       mjEnergy += m_pBChip * m_numChipsPerRank * m_numRanks * msRuntime;
       break;
     }
     case PimCmdEnum::COPY_D2H:
     {
-      mjEnergy = m_eR * msRuntime * m_numChipsPerRank * m_numRanks;
+      mjEnergy += m_eR * msRuntime * m_numChipsPerRank * m_numRanks;
       mjEnergy += m_pBChip * m_numChipsPerRank * m_numRanks * msRuntime;
       break;
     }
     case PimCmdEnum::COPY_D2D:
     {
       // One row read, one row write within a subarray
-      mjEnergy = m_eAP * 2 * msRuntime * m_numChipsPerRank * m_numRanks;
+      mjEnergy += m_eAP * 2 * msRuntime * m_numChipsPerRank * m_numRanks;
       mjEnergy += m_pBChip * m_numChipsPerRank * m_numRanks * msRuntime;
       break;
     }

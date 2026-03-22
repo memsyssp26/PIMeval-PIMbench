@@ -144,6 +144,7 @@ PimObjId pimAllocAssociated(PimObjId assocId, PimDataType dataType);
 PimObjId pimAllocBuffer(uint32_t numElements, PimDataType dataType);
 PimStatus pimFree(PimObjId obj);
 PimStatus pimInjectError(PimObjId obj, uint64_t elemIdx, unsigned bitIdx);
+PimStatus pimInjectBurstError(PimObjId obj, uint64_t elemIdx, unsigned bitIdx, unsigned length);
 
 // Data transfer
 // Note: idxBegin and idxEnd specify the range of indexes to be processed by the PIM.

@@ -1,60 +1,48 @@
-// Test: C++ version of vector addition
-// Copyright (c) 2024 University of Virginia
-// This file is licensed under the MIT License.
-// See the LICENSE file in the root of this repository for more details.
-
+// File: vec-add.cpp
 #include <iostream>
 #include <vector>
 #include <getopt.h>
 #include <stdint.h>
 #include <iomanip>
-#if defined(_OPENMP)
-#include <omp.h>
-#endif
+#include <chrono>
 
-#include "util.h"
 #include "libpimeval.h"
+#include "util.h"
 
 using namespace std;
 
-// Params ---------------------------------------------------------------------
-typedef struct Params
+typedef int32_t data_t;
+
+struct Params
 {
   uint64_t vectorLength;
   char *configFile;
   char *inputFile;
   bool shouldVerify;
-} Params;
+};
 
 void usage()
 {
-  fprintf(stderr,
-          "\nUsage:  ./vec-add.out [options]"
-          "\n"
-          "\n    -l    input size (default=2048 elements)"
-          "\n    -c    dramsim config file"
-          "\n    -i    input file containing two vectors (default=generates vector with random numbers)"
-          "\n    -v    t = verifies PIM output with host output. (default=false)"
-          "\n");
+  cout << "Usage: ./vec-add.out [-l vector_length] [-c config_file] [-i input_file] [-v]" << endl;
+  cout << "    -l: vector length (default: 65536)" << endl;
+  cout << "    -c: config file" << endl;
+  cout << "    -i: input file" << endl;
+  cout << "    -v: should verify (default: false)" << endl;
 }
 
 struct Params getInputParams(int argc, char **argv)
 {
   struct Params p;
-  p.vectorLength = 2048;
+  p.vectorLength = 65536;
   p.configFile = nullptr;
   p.inputFile = nullptr;
   p.shouldVerify = false;
 
-  int opt;
-  while ((opt = getopt(argc, argv, "h:l:c:i:v:")) >= 0)
+  int c;
+  while ((c = getopt(argc, argv, "l:c:i:v")) != -1)
   {
-    switch (opt)
+    switch (c)
     {
-    case 'h':
-      usage();
-      exit(0);
-      break;
     case 'l':
       p.vectorLength = strtoull(optarg, NULL, 0);
       break;
@@ -65,7 +53,7 @@ struct Params getInputParams(int argc, char **argv)
       p.inputFile = optarg;
       break;
     case 'v':
-      p.shouldVerify = (*optarg == 't') ? true : false;
+      p.shouldVerify = true;
       break;
     default:
       fprintf(stderr, "\nUnrecognized option!\n");
@@ -122,7 +110,7 @@ void vectorAddition(uint64_t vectorLength, std::vector<int> &src1, std::vector<i
   pimFree(srcObj2);
 }
 
-int main(int argc, char* argv[])
+int main(int argc, char **argv)
 {
   struct Params params = getInputParams(argc, argv);
   std::cout << "Running Vector Add on PIM for vector length: " << params.vectorLength << "\n\n";

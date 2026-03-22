@@ -28,7 +28,6 @@ pimSim::get()
   return s_instance;
 }
 
-//! @brief  Destroy the pimSim singleton
 void
 pimSim::destroy()
 {
@@ -41,6 +40,7 @@ pimSim::destroy()
 //! @brief  pimSim ctor
 pimSim::pimSim()
 {
+  m_config = std::make_unique<pimSimConfig>();
 }
 
 //! @brief  pimSim dtor
@@ -57,7 +57,9 @@ pimSim::uninit()
   m_threadPool.reset();
   m_statsMgr.reset();
   m_paramsDram.reset();
-  m_config.uninit();
+  if (m_config) {
+    m_config->uninit();
+  }
 }
 
 //! @brief  Create a PIM device
@@ -66,7 +68,7 @@ pimSim::createDevice(PimDeviceEnum deviceType, unsigned numRanks, unsigned numBa
 {
   pimPerfMon perfMon("createDevice");
   uninit();
-  bool success = m_config.init(deviceType, numRanks, numBankPerRank, numSubarrayPerBank, numRows, numCols, bufferSize);
+  bool success = m_config->init(deviceType, numRanks, numBankPerRank, numSubarrayPerBank, numRows, numCols, bufferSize);
   if (!success) {
     return false;
   }
@@ -79,7 +81,7 @@ pimSim::createDeviceFromConfig(PimDeviceEnum deviceType, const char* configFileP
 {
   pimPerfMon perfMon("createDeviceFromConfig");
   uninit();
-  bool success = m_config.init(deviceType, configFilePath);
+  bool success = m_config->init(deviceType, configFilePath);
   if (!success) {
     return false;
   }
@@ -91,18 +93,17 @@ bool
 pimSim::createDeviceCommon()
 {
   // Create memory params, which is needed before creating pimDevice
-  if (!m_config.getMemConfigFile().empty()) {
-    m_paramsDram = pimParamsDram::createFromConfig(m_config.getMemConfigFile());
+  if (!m_config->getMemConfigFile().empty()) {
+    m_paramsDram = pimParamsDram::createFromConfig(m_config->getMemConfigFile());
   } else {
-    m_paramsDram = pimParamsDram::create(m_config.getMemoryProtocol());
+    m_paramsDram = pimParamsDram::create(m_config->getMemoryProtocol());
   }
 
   // Create PIM device
-  m_device = std::make_unique<pimDevice>(m_config);
+  m_device = pimDeviceFactory::create(*m_config, *m_paramsDram);
 
-  if (!m_device->isValid()) {
+  if (!m_device) {
     uninit();
-    std::printf("PIM-Error: Failed to create PIM device of type %s\n", pimUtils::pimDeviceEnumToStr(m_config.getDeviceType()).c_str());
     return false;
   }
 
@@ -264,6 +265,13 @@ pimSim::pimInjectError(PimObjId obj, uint64_t elemIdx, unsigned bitIdx)
 {
   if (!isValidDevice()) { return false; }
   return m_device->pimInjectError(obj, elemIdx, bitIdx);
+}
+
+bool
+pimSim::pimInjectBurstError(PimObjId obj, uint64_t elemIdx, unsigned bitIdx, unsigned length)
+{
+  if (!isValidDevice()) { return false; }
+  return m_device->pimInjectBurstError(obj, elemIdx, bitIdx, length);
 }
 
 //! @brief  Create an obj referencing to a range of an existing obj

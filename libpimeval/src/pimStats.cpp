@@ -24,6 +24,7 @@ pimStatsMgr::showStats() const
   showDeviceParams();
   showCopyStats();
   showCmdStats();
+  showEccStats();
   std::printf("----------------------------------------\n");
 }
 
@@ -177,6 +178,8 @@ pimStatsMgr::resetStats()
   m_bitsCopiedMainToDevice = 0;
   m_bitsCopiedDeviceToMain = 0;
   m_bitsCopiedDeviceToDevice = 0;
+  m_numEccCorrected = 0;
+  m_numEccUncorrectable = 0;
 }
 
 //! @brief  Record estimated runtime and energy of a PIM command
@@ -296,6 +299,16 @@ pimPerfMon::~pimPerfMon()
   double elapsed = std::chrono::duration<double, std::milli>(now - m_startTime).count();
   if (pimSim::get()->getStatsMgr()) {
     pimSim::get()->getStatsMgr()->pimApiScopeEnd(m_tag, elapsed);
+  }
+}
+
+void
+pimStatsMgr::showEccStats() const
+{
+  if (m_numEccCorrected > 0 || m_numEccUncorrectable > 0) {
+    std::printf("ECC Reliability Stats:\n");
+    std::printf(" %45s : %llu events\n", "Bits Corrected (SECDED)", (unsigned long long)m_numEccCorrected);
+    std::printf(" %45s : %llu events\n", "Uncorrectable Errors", (unsigned long long)m_numEccUncorrectable);
   }
 }
 

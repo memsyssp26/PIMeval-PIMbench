@@ -1,0 +1,70 @@
+\documentclass{article}
+\usepackage{graphicx} % Required for inserting images
+\usepackage[margin=0.75in, top=0.75in, bottom=0.75in]{geometry}
+\usepackage{enumitem} % For compact lists
+\usepackage{hyperref}
+
+\begin{document}
+\title{\vspace{-0.5in}CS 6501: CPU/GPU Memory Systems Project Proposal: Implementing PIM-Compatible ECC}
+
+\author{Michael Shires, Kelly Farran, Derek Hansen}
+
+\maketitle
+
+\section{Introduction}
+\label{sec:introduction}
+%Problem motivation, research task & key objectives, summary of novelty
+As processor performance gains outpace memory bandwidth, the memory bottleneck limits the ability to take full advantage of the computing capabilities of modern advances\cite{mahapatra_processor-memory_1999}. Processing-In-Memory (PIM) is growing in appeal as a candidate to bypass the need to move data out of DRAM and into the processor. Use-cases for this technology vary from System-on-a-Chip (SoC) to server-grade. As server-grade applications typically use the most advanced processors and therefore can experience the largest performance reductions from a memory-bottleneck, they are excellent candidates for PIM, once the technology becomes readily available. However, these use-cases will typically have long running workloads, and require error-correction-code (ECC) features in DRAM to prevent data corruption over time. Thus, for a PIM-enabled DRAM to be competitive to enterprise customers, it is reasonable to expect ECC features on the chip.
+\newline
+
+ECC in PIM poses several challenges, the first being levels of granularity and protection, and the second being striped data. ECC is inherently applied at a particular granularity level, and the goal is to match that to the word line being fetched. Higher level granularity provides protection of larger data blocks, however, it also forces the granularity-size data to be fetched. Several implementations of ECC on DRAM have solved this using a 2-tier implementation\cite{config-ecc}\cite{yoon2010virtualized}. Our ECC should have granularity consideration in it's implementation, either as a static tiered system or a configurable option.
+\newline
+
+Data in DRAM can be interleaved at multiple levels, whether it is at the chip-level, bank-level, or sub-array level. This poses a challenge for PIM, as the primary advantage of PIM is data locality. Thus, if the data needed for a computation is split across several chips, then the performance gains will be reduced. While solving address interleaving and spatial locality for PIM is not a primary goal, it should be considered within our implementation, as assumptions about locality could result in systems that are ultimately not practical or scalable.
+
+\section{Related Work}
+\label{sec:relatedwork}
+%Summary of related work
+The standard implementation of ECC used in DRAM is often single-error-correction double-error-detection (SECDED), where redundant bits are employed to locate and correct single-bit errors, and detect (but not correct) double-bit errors \cite{11007279}. A typical implementation of SECDED in a DRAM Dual-Inline Memory Module (DIMM) includes 8 bits of ECC to account for 64 bits of data, requiring a 72-bit wide data path \cite{yoon2010virtualized}. Depending on where the ECC bits are stored, DRAM ECC can fall into one of several categories. With \textit{side-band ECC}, the ECC bits are stored in a designated DRAM chip or chips and received alongside the data by the memory controller, where SEC is performed. \textit{Inline ECC} stores the ECC bits inside the same DRAM chip as the requested data, which is particularly useful for LPDDR, as the use of side-band ECC with the fixed channel width of LPDDR leads to wasted bandwidth \cite{sankaranarayanan2020ecc}. \textit{On-die ECC}, used in DDR5, similarly stores the ECC bits on the same chip as the data, however the DRAM die itself handles ECC by computing the ECC bits before a store as well as performing SEC  on the ECC and data bits on a load \cite{sankaranarayanan2020ecc}. 
+\newline
+
+High Bandwidth Memory (HBM) 3D-stacked DRAM technology has grown in popularity due to increased demand for AI infrastructure, which motivates new approaches to DRAM ECC due to several factors. First, the data fetch granularity of GPUs differs between GPU vendors due to variations in GPU memory hierarchy configurations. Thus, the conventional approach of DRAM ECC in assuming consistent data access size is not feasible for HBM, as an ECC method optimized for one data access size may be less effective or less energy efficient when applied to data of a different size \cite{config-ecc}. Chen et al. \cite{config-ecc} proposed Config-ECC, a configurable two-tier ECC scheme for HBM which reduces overall energy consumption as well as the failure in time rate compared to a fixed 64-byte DRAM ECC scheme. Through the two-tiered approach, Config-ECC can account for both small and large granularity faults across 32B, 64B, and 128B data accesses. Tier 1 corrects all small granularity faults (i.e., single-bit, single column, and single TSV) and detects large granularity faults (i.e., row, bank failure). If a large granularity fault is detected by Tier 1, Tier 2 is deployed to handle its correction.
+\newline
+
+Another issue with HBM is that the increased density of the DRAMs leads to a higher likelihood of failure, including entire entire chip failure \cite{config-ecc, yoon2010virtualized}. In conventional server environments, Chipkill ECC can provide coverage for entire chip failure by striping data across chips and employing a rank-wide ECC \cite{yoon2010virtualized}. However, Chipkill is not feasible for use in HBM, as data lines are localized to individual banks within a DRAM die. To address this issue, Yoon and Erez \cite{yoon2010virtualized} proposed a virtualized ECC mechanism which allows for the dynamic storage of ECC bits as a response to system needs \cite{yoon2010virtualized}. Similarly to Config-ECC, this virtualized ECC is comprised of two tiers. Tier 1 consists of an extra chip that contains just enough information to perform error detection, while tier 2 contains the full correction data and is accessed only if a correction is necessary. Rather than taking up area on the DRAM chips themselves, the tier 2 information is stored elsewhere in the conventional physical address space and is handled like normal data until a correction is necessary. Gurumurthi et al. \cite{9556624} show that HBM2 SECDED ECC is not sufficient for HBM3 due to increased susceptibility to cell failures as DRAM scales, and thus propose a novel on-die ECC mechanism which employs fault-isolation to reduce the uncorrected error rate of HBM3 \cite{9556624}. 
+\newline
+
+To the best of our knowledge, the only work which explicitly incorporates PIM with DRAM ECC is Cache-PIM \cite{11007279}. Cache-PIM implements a PIM-compatible last level cache inside eDRAM which is equipped with triple-tier ECC technology; however, cache-PIM is designed for analog in-memory-copmuting, rather than digital PIM. We are not aware of any prior work which explicitly enables in-DRAM ECC which is compatible with digital PIM. 
+
+\section{Research plan and timeline}
+\label{sec:researchplan}
+Our team plans on spending 3-4 weeks conducting preliminary research before beginning the design and implementation of the project. Project design and implementation will be broken into three phases, each with a deliverable and metrics to evaluate the validity of the component. The first deliverable will be implementing bank-level ECC in an 'always-on' configuration. The second phase of the project will be modifying the initial design to allow for ECC to be turned on or off. This can be analyzed to determine capacity and energy trade-offs. Finally, if time permits, we will attempt to integrate DRAMSim3 with PIMEval. The higher fidelity of DRAMSim3 will allow us to model ECC features at a lower level, and using it's thermal module, allow us to determine power consumption of features.
+\newline
+
+This will be compared with the data provided by \cite{schroeder_dram_2009} to determine the change in probability of zero errors given different lengths of runtime.
+\subsection{Preliminary Research}
+For preliminary research, our goal as a team is to understand the PIMeval project well enough to contribute meaningfully to the project, and understand the current challenges with PIM, and ECC in DRAM well enough to design a system that leverages current research.
+To help us understand PIMEval, we have reached out to Farzana Siddique and are in the process of setting up a meeting with her to discuss the project infrastructure. After this meeting, we will break up portions of the simulator for each group member to work on.
+For paper research, our goal is to read 1 paper per week relevant to the project, and share the main findings asynchronously throughout the week, and present it during our weekly meeting. We will focus on trade-offs of different levels of granularity for ECC, current restrictions and capabilities of PIM, and how ECC-enabled products fit in the market. For example, current ECC-enabled DRAM is a high-end product, and not usually put into consumer-grade products. Due to this, it may not be advantageous to put ECC into products such as LPDDR or generic DDR. Our goal is to answer these questions through our research.
+\newline
+
+Additionally, we believe that the current implementations of PIM will largely dictate the level of granularity that we use. If PIM requires whole wordlines to work, and wordlines are stored in a single chip as opposed to striped across chips in a rank, then ECC most likely will have to be at that granularity, to provide similar latency and energy consumption needs.
+%Specific research tasks and milestones
+\subsection{Project Phases}
+For implementing bank level ECC, we are taking inspiration from Gurumurthi et al\cite{9556624} with our initial design. Per their paper, we plan on considering a standard of 48 bits of ECC, with 32 bits on chip and 16 bits provided by the memory controller. From this point we will evaluate different error correction codes, such as Reed-Solomon, CRC-16 to CRC-24 and LPDC. As discussed in Section \ref{sec:relatedwork}, configurable or multi-tiered ECC seems to be a desirable feature, so we will implement this as well. This will be evaluated by running a benchmark workload on PIMeval and creating a program hook to contaminate memory, and observe whether or not ECC successfully detects and/or corrects the errors. The reliability will then be compared against \cite{schroeder_dram_2009} to determine the increase in mission-time with zero errors at given probabilities.
+\newline
+
+Once this is completed, we will create a new device using the DeviceCreationAPI, providing flags for enabling and disabling ECC. We will learn more about this process through our research, but our current understanding indicates that there should be a way to implement ECC such that it can be disabled to provide higher capacity by converting the ECC bits to storage bits, lower energy consumption by not activating the ECC circuits on each access, and potentially a decrease in latency, depending on how the tiers of ECC and granularity are configured. We will create a new device with this enable/disable feature, and compare the results.
+\newline
+
+Finally, if time permits, we will integrate PIMeval with DRAMSim3 to enable a higher fidelity of simulation of PIM systems. For this, we will reach out to Farzana Siddique again and discuss what features from DRAMSim3 would be beneficial to have access to within PIMeval and use hooks to call those as necessary. Currently, the thermal module of DRAMSim3 is not reliable. The most recent production release available crashes on segmentation fault when -DTHERMAL is enabled, and most HBM temperatures default to 283 degrees Celsius regardless of access pattern. Due to this, we will most likely ignore the thermal module for now.
+
+\section{Conclusion}
+\label{sec:conclusion}
+PIM is a largely experimental concept as of now, however it proposes an appealing side-step to current memory bottleneck challenges. If PIM is to be actualized and scaled to a profitable level, enterprise-scale consumers will be needed, and these clients will expect levels of reliability afforded only by ECC. Our project will provide frameworks for implementing ECC in PIM, describing the benefits, tradeoffs, and design.
+
+\bibliographystyle{acm}
+\bibliography{references}
+
+\end{document}
+

@@ -118,6 +118,13 @@ pimInjectError(PimObjId obj, uint64_t elemIdx, unsigned bitIdx)
   return ok ? PIM_OK : PIM_ERROR;
 }
 
+PimStatus
+pimInjectBurstError(PimObjId obj, uint64_t elemIdx, unsigned bitIdx, unsigned length)
+{
+  bool ok = pimSim::get()->pimInjectBurstError(obj, elemIdx, bitIdx, length);
+  return ok ? PIM_OK : PIM_ERROR;
+}
+
 //! @brief  Create an obj referencing to a range of an existing obj
 PimObjId
 pimCreateRangedRef(PimObjId refId, uint64_t idxBegin, uint64_t idxEnd)

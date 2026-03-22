@@ -25,35 +25,43 @@ class pimResMgr;
 class pimDevice
 {
 public:
-  pimDevice(const pimSimConfig& config);
-  ~pimDevice();
+  pimDevice(const pimSimConfig& config, const pimParamsDram& paramsDram)
+    : m_config(config), m_paramsDram(paramsDram) {}
+  virtual ~pimDevice();
 
   const pimSimConfig& getConfig() const { return m_config; }
 
-  PimDeviceEnum getDeviceType() const { return m_config.getDeviceType(); }
-  PimDeviceEnum getSimTarget() const { return m_config.getSimTarget(); }
+  // Metadata
+  virtual PimDeviceEnum getDeviceType() const { return m_config.getDeviceType(); }
+  virtual PimDeviceEnum getSimTarget() const { return m_config.getSimTarget(); }
+  
   unsigned getNumRanks() const { return m_config.getNumRanks(); }
   unsigned getNumBankPerRank() const { return m_config.getNumBankPerRank(); }
   unsigned getNumSubarrayPerBank() const { return m_config.getNumSubarrayPerBank(); }
   unsigned getNumRowPerSubarray() const { return m_config.getNumRowPerSubarray(); }
   unsigned getNumColPerSubarray() const { return m_config.getNumColPerSubarray(); }
-  unsigned getOnChipBufferSize() const { return m_config.getBufferSize(); }
 
+  // Virtual Layout Properties
+  virtual bool isVLayoutDevice() const = 0;
+  virtual bool isHLayoutDevice() const = 0;
+  virtual bool isHybridLayoutDevice() const { return false; }
+
+  // Virtual initialization (Subclasses implement their own aggregation logic)
+  virtual bool init() = 0;
+
+  // Resource & Execution (Common to all devices)
   unsigned getNumCores() const { return m_numCores; }
   unsigned getNumRows() const { return m_numRows; }
   unsigned getNumCols() const { return m_numCols; }
   unsigned getBufferSize() const { return m_bufferSize; }
   bool isValid() const { return m_isValid; }
 
-  bool isVLayoutDevice() const;
-  bool isHLayoutDevice() const;
-  bool isHybridLayoutDevice() const;
-
   PimObjId pimAlloc(PimAllocEnum allocType, uint64_t numElements, PimDataType dataType);
   PimObjId pimAllocAssociated(PimObjId assocId, PimDataType dataType);
   PimObjId pimAllocBuffer(uint32_t numElements, PimDataType dataType);
   bool pimFree(PimObjId obj);
   bool pimInjectError(PimObjId obj, uint64_t elemIdx, unsigned bitIdx);
+  bool pimInjectBurstError(PimObjId obj, uint64_t elemIdx, unsigned bitIdx, unsigned length);
   PimObjId pimCreateRangedRef(PimObjId refId, uint64_t idxBegin, uint64_t idxEnd);
   PimObjId pimCreateDualContactRef(PimObjId refId);
 
@@ -68,17 +76,17 @@ public:
   pimCore& getCore(PimCoreId coreId) { return m_cores[coreId]; }
   bool executeCmd(std::unique_ptr<pimCmd> cmd);
 
-private:
-  bool init();
-  bool adjustConfigForSimTarget(unsigned& numRanks, unsigned& numBankPerRank, unsigned& numSubarrayPerBank, unsigned& numRows, unsigned& numCols);
+protected:
+  // Helpers for subclasses
+  bool commonInit(unsigned numCores, unsigned numRows, unsigned numCols, unsigned bufferSize);
 
   const pimSimConfig& m_config;
+  const pimParamsDram& m_paramsDram;
   unsigned m_numCores = 0;
   unsigned m_numRows = 0;
   unsigned m_numCols = 0;
   unsigned m_bufferSize = 0;
   bool m_isValid = false;
-  bool m_isInit = false;
   std::unique_ptr<pimResMgr> m_resMgr;
   std::unique_ptr<pimPerfEnergyBase> m_perfEnergyModel;
   std::vector<pimCore> m_cores;
@@ -88,6 +96,15 @@ private:
   dramsim3::PIMCPU* m_deviceMemory = nullptr;
   dramsim3::Config* m_deviceMemoryConfig = nullptr;
 #endif
+};
+
+/**
+ * @class pimDeviceFactory
+ * @brief Factory to create polymorphic PIM devices.
+ */
+class pimDeviceFactory {
+public:
+    static std::unique_ptr<pimDevice> create(const pimSimConfig& config, const pimParamsDram& paramsDram);
 };
 
 #endif

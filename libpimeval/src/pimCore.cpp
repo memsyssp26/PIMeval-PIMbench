@@ -165,7 +165,7 @@ bool
 pimCore::setSenseAmpRow(const std::vector<bool>& vals)
 {
   if (vals.size() != m_numCols) {
-    std::printf("PIM-Error: Incorrect data size write to row SAs: size = %lu, numCols = %u\n", vals.size(), m_numCols);
+    std::printf("PIM-Error: Incorrect data size write to row SAs: size = %zu, numCols = %u\n", vals.size(), m_numCols);
     return false;
   }
   m_rowRegs[PIM_RREG_SA] = vals;
@@ -177,7 +177,7 @@ bool
 pimCore::setSenseAmpCol(const std::vector<bool>& vals)
 {
   if (vals.size() != m_numRows) {
-    std::printf("PIM-Error: Incorrect data size write to col SAs: size = %lu, numRows = %u\n", vals.size(), m_numRows);
+    std::printf("PIM-Error: Incorrect data size write to col SAs: size = %zu, numRows = %u\n", vals.size(), m_numRows);
     return false;
   }
   m_senseAmpCol = vals;

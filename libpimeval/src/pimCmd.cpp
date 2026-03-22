@@ -196,7 +196,7 @@ pimCmdCopy::execute()
   }
 
   // for non-functional simulation, sync src data from simulated memory
-  if (pimSim::get()->getDeviceType() != PIM_FUNCTIONAL) {
+  if (m_device->getDeviceType() != PIM_FUNCTIONAL) {
     if (m_cmdType == PimCmdEnum::COPY_D2H || m_cmdType == PimCmdEnum::COPY_D2D) {
       pimObjInfo &objSrc = m_device->getResMgr()->getObjInfo(m_src);
       objSrc.syncFromSimulatedMem();
@@ -310,7 +310,7 @@ pimCmdCopy::sanityCheck() const
 bool
 pimCmdCopy::updateStats() const
 {
-   if (m_cmdType == PimCmdEnum::COPY_H2D) {
+    if (m_cmdType == PimCmdEnum::COPY_H2D) {
     const pimObjInfo &objDest = m_device->getResMgr()->getObjInfo(m_dest);
     uint64_t numElements = objDest.getNumElements();
     if (!m_copyFullRange) {
@@ -1885,7 +1885,7 @@ pimCmdAnalogAAP::printDebugInfo() const
   for (const auto &kv : m_destRows) {
     msg += " " + std::to_string(kv.first) + "[" + std::to_string(kv.second) + "]";
   }
-  std::printf("PIM-MicroOp: %s (#src = %lu, #dest = %lu, rows =%s)\n",
+  std::printf("PIM-MicroOp: %s (#src = %zu, #dest = %zu, rows =%s)\n",
               getName().c_str(), m_srcRows.size(), m_destRows.size(), msg.c_str());
 }
 

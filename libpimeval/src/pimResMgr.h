@@ -51,16 +51,11 @@ public:
   unsigned getNumColsPerElem() const { return m_numColsPerElem; }
   bool isBuffer() const { return m_isBuffer; }
 
-  std::pair<unsigned, unsigned> locateIthElemInRegion(unsigned i) const {
-    assert(i < getNumElemInRegion());
-    unsigned rowIdx = m_rowIdx; // only one row of elements per region
-    unsigned colIdx = m_colIdx + i * m_numColsPerElem;
-    return std::make_pair(rowIdx, colIdx);
-  }
+  std::pair<unsigned, unsigned> locateIthElemInRegion(unsigned i) const;
 
   bool isValid() const { return m_isValid && m_coreId >= 0 && m_numAllocRows > 0 && m_numAllocCols > 0; }
 
-  void print(uint64_t regionId) const;
+  void print() const;
 
 private:
   PimCoreId m_coreId = -1;
@@ -129,6 +124,7 @@ public:
   // set an element at index from bit representation
   bool setElementBits(uint64_t index, uint64_t bits) {
     uint64_t byteIndex = index * m_bytesPerElement;
+    std::memset(m_data.data() + byteIndex, 0, m_bytesPerElement);
     std::memcpy(m_data.data() + byteIndex, &bits, m_bytesPerElement);
     return true;
   }
@@ -189,19 +185,19 @@ public:
       m_device(device),
       m_isBuffer(isBuffer)
   {}
-  ~pimObjInfo() {}
+  virtual ~pimObjInfo();
 
   void addRegion(pimRegion region) { m_regions.push_back(region); }
   void setObjId(PimObjId objId) { m_objId = objId; }
   void setAssocObjId(PimObjId assocObjId) { m_assocObjId = assocObjId; }
-  void setRefObjId(PimObjId refObjId) { m_refObjId = refObjId; }
+  void setRefObj(std::shared_ptr<pimObjInfo> refObj) { m_refObj = refObj; }
   void setIsDualContactRef(bool val) { m_isDualContactRef = val; }
   void setNumColsPerElem(unsigned val) { m_numColsPerElem = val; }
   void finalize();
 
   PimObjId getObjId() const { return m_objId; }
   PimObjId getAssocObjId() const { return m_assocObjId; }
-  PimObjId getRefObjId() const { return m_refObjId; }
+  std::shared_ptr<pimObjInfo> getRefObj() const { return m_refObj; }
   bool isDualContactRef() const { return m_isDualContactRef; }
   PimAllocEnum getAllocType() const { return m_allocType; }
   PimDataType getDataType() const { return m_dataType; }
@@ -249,11 +245,12 @@ public:
   void syncFromSimulatedMem();
   void syncToSimulatedMem() const;
   void injectError(uint64_t elemIdx, unsigned bitIdx);
+  void injectBurstError(uint64_t elemIdx, unsigned bitIdx, unsigned length);
 
 private:
   PimObjId m_objId = -1;
   PimObjId m_assocObjId = -1;
-  PimObjId m_refObjId = -1;
+  std::shared_ptr<pimObjInfo> m_refObj = nullptr;
   PimDataType m_dataType;
   PimAllocEnum m_allocType;
   pimDataHolder m_data;
@@ -283,18 +280,21 @@ public:
   PimObjId pimAlloc(PimAllocEnum allocType, uint64_t numElements, PimDataType dataType);
   PimObjId pimAllocAssociated(PimObjId assocId, PimDataType dataType);
   PimObjId pimAllocBuffer(uint32_t numElements, PimDataType dataType);
-  bool pimFree(PimObjId objId);
-  bool pimInjectError(PimObjId objId, uint64_t elemIdx, unsigned bitIdx);
+  bool pimFree(PimObjId obj);
+  bool pimInjectError(PimObjId obj, uint64_t elemIdx, unsigned bitIdx);
+  bool pimInjectBurstError(PimObjId obj, uint64_t elemIdx, unsigned bitIdx, unsigned length);
   PimObjId pimCreateRangedRef(PimObjId refId, uint64_t idxBegin, uint64_t idxEnd);
   PimObjId pimCreateDualContactRef(PimObjId refId);
 
   bool isValidObjId(PimObjId objId) const { return m_objMap.find(objId) != m_objMap.end(); }
-  const pimObjInfo& getObjInfo(PimObjId objId) const { assert(objId != -1); return m_objMap.at(objId); }
-  pimObjInfo& getObjInfo(PimObjId objId) { assert(objId != -1); return m_objMap.at(objId); }
+  const pimObjInfo& getObjInfo(PimObjId objId) const { assert(objId != -1); return *(m_objMap.at(objId)); }
+  pimObjInfo& getObjInfo(PimObjId objId) { assert(objId != -1); return *(m_objMap.at(objId)); }
 
   bool isVLayoutObj(PimObjId objId) const;
   bool isHLayoutObj(PimObjId objId) const;
   bool isHybridLayoutObj(PimObjId objId) const;
+
+  void freeRegion(PimCoreId coreId, PimObjId objId);
 
 private:
   pimRegion findAvailRegionOnCore(PimCoreId coreId, unsigned numAllocRows, unsigned numAllocCols) const;
@@ -322,7 +322,7 @@ private:
 
   pimDevice* m_device;
   PimObjId m_availObjId;
-  std::unordered_map<PimObjId, pimObjInfo> m_objMap;
+  std::unordered_map<PimObjId, std::shared_ptr<pimObjInfo>> m_objMap;
   std::unordered_map<PimCoreId, std::unique_ptr<pimResMgr::coreUsage>> m_coreUsage;
   std::unordered_map<PimObjId, std::set<PimObjId>> m_refMap;
   bool m_debugAlloc = 0;

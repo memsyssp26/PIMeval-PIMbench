@@ -8,10 +8,35 @@
 #define LAVA_PIM_SIM_CONFIG_H
 
 #include "libpimeval.h"
+#include "pimEccStrategy.h"
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <memory>
 
+
+/**
+ * @class pimConfigParam
+ * @brief A type-safe configuration parameter with validation and defaults.
+ */
+template <typename T>
+class pimConfigParam {
+public:
+    pimConfigParam(const std::string& name, T defaultVal)
+        : m_name(name), m_value(defaultVal), m_default(defaultVal) {}
+
+    void setValue(T val) { m_value = val; m_isSet = true; }
+    T getValue() const { return m_value; }
+    const std::string& getName() const { return m_name; }
+    bool isSet() const { return m_isSet; }
+    void reset() { m_value = m_default; m_isSet = false; }
+
+private:
+    std::string m_name;
+    T m_value;
+    T m_default;
+    bool m_isSet = false;
+};
 
 //! @class  pimSimConfig
 //! @brief  PIM simulator configurations
@@ -69,6 +94,9 @@ public:
   pimSimConfig() { reset(); }
   ~pimSimConfig() {}
 
+  pimSimConfig(const pimSimConfig&) = delete;
+  pimSimConfig& operator=(const pimSimConfig&) = delete;
+
   // Update PIMeval simulation configuration parameters at device creation
   bool init(PimDeviceEnum deviceType, unsigned numRanks, unsigned numBankPerRank,
       unsigned numSubarrayPerBank, unsigned numRowPerSubarray, unsigned numColPerSubarray, unsigned bufferSize);
@@ -78,22 +106,26 @@ public:
   void show() const;
 
   // Getters
-  const std::string& getSimConfigFile() const { return m_simConfigFile; }
-  const std::string& getMemConfigFile() const { return m_memConfigFile; }
-  PimDeviceEnum getDeviceType() const { return m_deviceType; }
-  PimDeviceEnum getSimTarget() const { return m_simTarget; }
-  PimDeviceProtocolEnum getMemoryProtocol() const { return m_memoryProtocol; }
-  unsigned getNumRanks() const { return m_numRanks; }
-  unsigned getNumBankPerRank() const { return m_numBankPerRank; }
-  unsigned getNumSubarrayPerBank() const { return m_numSubarrayPerBank; }
-  unsigned getNumRowPerSubarray() const { return m_numRowPerSubarray; }
-  unsigned getNumColPerSubarray() const { return m_numColPerSubarray; }
-  unsigned getNumThreads() const { return m_numThreads; }
-  unsigned getBufferSize() const { return m_bufferSize; }
-  bool isAnalysisMode() const { return m_analysisMode; }
-  unsigned getDebug() const { return m_debug; }
-  bool isLoadBalanced() const { return m_loadBalanced; }
-  bool isEccEnabled() const { return m_eccEnabled; }
+  std::string getSimConfigFile() const { return m_simConfigFile.getValue(); }
+  std::string getMemConfigFile() const { return m_memConfigFile.getValue(); }
+  PimDeviceEnum getDeviceType() const { return m_deviceType.getValue(); }
+  PimDeviceEnum getSimTarget() const { return m_simTarget.getValue(); }
+  PimDeviceProtocolEnum getMemoryProtocol() const { return m_memoryProtocol.getValue(); }
+  unsigned getNumRanks() const { return m_numRanks.getValue(); }
+  unsigned getNumBankPerRank() const { return m_numBankPerRank.getValue(); }
+  unsigned getNumSubarrayPerBank() const { return m_numSubarrayPerBank.getValue(); }
+  unsigned getNumRowPerSubarray() const { return m_numRowPerSubarray.getValue(); }
+  unsigned getNumColPerSubarray() const { return m_numColPerSubarray.getValue(); }
+  unsigned getNumThreads() const { return m_numThreads.getValue(); }
+  unsigned getBufferSize() const { return m_bufferSize.getValue(); }
+  bool isAnalysisMode() const { return m_analysisMode.getValue(); }
+  unsigned getDebug() const { return m_debug.getValue(); }
+  bool isLoadBalanced() const { return m_loadBalanced.getValue(); }
+  bool isEccEnabled() const { return m_eccEnabled.getValue(); }
+  unsigned getEccGranularity() const { return m_eccGranularity.getValue(); }
+  std::string getEccType() const { return m_eccType.getValue(); }
+  unsigned getEccLayers() const { return m_eccLayers.getValue(); }
+  const pimEccStrategy* getEccStrategy() const { return m_eccStrategy.get(); }
 
   enum pimDebugFlags
   {
@@ -121,7 +153,7 @@ private:
   bool deriveDeviceType(PimDeviceEnum deviceType);
   bool deriveSimTarget();
   bool deriveMemConfigFile();
-  bool deriveDimension(const std::string& envVar, const std::string& cfgVar, const unsigned apiVal, const unsigned defVal, unsigned& retVal);
+  bool deriveDimension(const std::string& cfgVar, const std::string& envVar, const unsigned apiVal, const unsigned defVal, pimConfigParam<unsigned>& retVal);
   bool deriveDimensions(unsigned numRanks, unsigned numBankPerRank, unsigned numSubarrayPerBank, unsigned numRowPerSubarray, unsigned numColPerSubarray, unsigned bufferSize);
   bool deriveNumThreads();
   bool deriveMiscEnvVars();
@@ -142,6 +174,9 @@ private:
   inline static const std::string m_cfgVarLoadBalance = "should_load_balance";
   inline static const std::string m_cfgVarBufferSize = "buffer_size";
   inline static const std::string m_cfgVarEcc = "ecc_enabled";
+  inline static const std::string m_cfgVarEccGranularity = "ecc_granularity";
+  inline static const std::string m_cfgVarEccType = "ecc_type";
+  inline static const std::string m_cfgVarEccLayers = "ecc_layers";
 
   // Environment variables
   inline static const std::string m_envVarSimConfig = "PIMEVAL_SIM_CONFIG";
@@ -158,6 +193,9 @@ private:
   inline static const std::string m_envVarDebug = "PIMEVAL_DEBUG";
   inline static const std::string m_envVarLoadBalance = "PIMEVAL_LOAD_BALANCE";
   inline static const std::string m_envVarEcc = "PIMEVAL_ECC";
+  inline static const std::string m_envVarEccGranularity = "PIMEVAL_ECC_GRANULARITY";
+  inline static const std::string m_envVarEccType = "PIMEVAL_ECC_TYPE";
+  inline static const std::string m_envVarEccLayers = "PIMEVAL_ECC_LAYERS";
 
   // Add env vars to this list for readEnvVars
   inline static const std::vector<std::string> m_envVarList = {
@@ -175,6 +213,9 @@ private:
     m_envVarLoadBalance,
     m_envVarBufferSize,
     m_envVarEcc,
+    m_envVarEccGranularity,
+    m_envVarEccType,
+    m_envVarEccLayers,
   };
 
   // Default values if not specified during init
@@ -189,44 +230,52 @@ private:
 
   //! @brief  Reset all member variables to default status
   inline void reset() {
-    m_simConfigFile.clear();
-    m_memConfigFile.clear();
-    m_deviceType = PIM_DEVICE_NONE;
-    m_simTarget = PIM_DEVICE_NONE;
-    m_memoryProtocol = PIM_DEVICE_PROTOCOL_DDR;
-    m_numRanks = 0;
-    m_numBankPerRank = 0;
-    m_numSubarrayPerBank = 0;
-    m_numRowPerSubarray = 0;
-    m_numColPerSubarray = 0;
-    m_numThreads = 0;
-    m_bufferSize = 0;
-    m_analysisMode = false;
-    m_debug = 0;
-    m_loadBalanced = false;
-    m_eccEnabled = DEFAULT_ECC;
+    m_simConfigFile.reset();
+    m_memConfigFile.reset();
+    m_deviceType.reset();
+    m_simTarget.reset();
+    m_memoryProtocol.reset();
+    m_numRanks.reset();
+    m_numBankPerRank.reset();
+    m_numSubarrayPerBank.reset();
+    m_numRowPerSubarray.reset();
+    m_numColPerSubarray.reset();
+    m_numThreads.reset();
+    m_bufferSize.reset();
+    m_analysisMode.reset();
+    m_debug.reset();
+    m_loadBalanced.reset();
+    m_eccEnabled.reset();
+    m_eccGranularity.reset();
+    m_eccType.reset();
+    m_eccLayers.reset();
+    m_eccStrategy = nullptr;
     m_envParams.clear();
     m_cfgParams.clear();
     m_isInit = false;
   }
 
   // PIM sim env variables
-  std::string m_simConfigFile;
-  std::string m_memConfigFile;
-  PimDeviceEnum m_deviceType;
-  PimDeviceEnum m_simTarget;
-  PimDeviceProtocolEnum m_memoryProtocol;
-  unsigned m_numRanks;
-  unsigned m_numBankPerRank;
-  unsigned m_numSubarrayPerBank;
-  unsigned m_numRowPerSubarray;
-  unsigned m_numColPerSubarray;
-  unsigned m_numThreads;
-  unsigned m_bufferSize;
-  bool m_analysisMode;
-  unsigned m_debug;
-  bool m_loadBalanced;
-  bool m_eccEnabled;
+  pimConfigParam<std::string> m_simConfigFile{"sim_config_file", ""};
+  pimConfigParam<std::string> m_memConfigFile{"mem_config_file", ""};
+  pimConfigParam<PimDeviceEnum> m_deviceType{"device_type", PIM_DEVICE_NONE};
+  pimConfigParam<PimDeviceEnum> m_simTarget{"sim_target", PIM_DEVICE_NONE};
+  pimConfigParam<PimDeviceProtocolEnum> m_memoryProtocol{"memory_protocol", PIM_DEVICE_PROTOCOL_DDR};
+  pimConfigParam<unsigned> m_numRanks{"num_ranks", 1};
+  pimConfigParam<unsigned> m_numBankPerRank{"num_banks", 4};
+  pimConfigParam<unsigned> m_numSubarrayPerBank{"num_subarrays", 32};
+  pimConfigParam<unsigned> m_numRowPerSubarray{"num_rows", 1024};
+  pimConfigParam<unsigned> m_numColPerSubarray{"num_cols", 8192};
+  pimConfigParam<unsigned> m_numThreads{"num_threads", 1};
+  pimConfigParam<unsigned> m_bufferSize{"buffer_size", 0};
+  pimConfigParam<unsigned> m_debug{"debug", 0};
+  pimConfigParam<bool> m_analysisMode{"analysis_mode", false};
+  pimConfigParam<bool> m_loadBalanced{"load_balanced", true};
+  pimConfigParam<bool> m_eccEnabled{"ecc_enabled", false};
+  pimConfigParam<unsigned> m_eccGranularity{"ecc_granularity", 64};
+  pimConfigParam<std::string> m_eccType{"ecc_type", "secded"};
+  pimConfigParam<unsigned> m_eccLayers{"ecc_layers", 1};
+  std::unique_ptr<pimEccStrategy> m_eccStrategy;
 
   // Store original parameters for extension purpose
   std::unordered_map<std::string, std::string> m_envParams;

@@ -48,6 +48,9 @@ public:
   void recordCopyDeviceToMain(uint64_t numBits, pimeval::perfEnergy mPerfEnergy);
   void recordCopyDeviceToDevice(uint64_t numBits, pimeval::perfEnergy mPerfEnergy);
 
+  void recordEccCorrected(uint64_t count = 1) { m_numEccCorrected += count; }
+  void recordEccUncorrectable(uint64_t count = 1) { m_numEccUncorrectable += count; }
+
 private:
   friend class pimPerfMon;
   void pimApiScopeStart();
@@ -57,6 +60,7 @@ private:
   void showDeviceParams() const;
   void showCopyStats() const;
   void showCmdStats() const;
+  void showEccStats() const;
 
   std::map<std::string, std::pair<int, pimeval::perfEnergy>> m_cmdPerf;
   std::map<std::string, std::pair<int, double>> m_msElapsed;
@@ -70,6 +74,9 @@ private:
   double m_mJCopiedMainToDevice = 0.0;
   double m_mJCopiedDeviceToMain = 0.0;
   double m_mJCopiedDeviceToDevice = 0.0;
+
+  uint64_t m_numEccCorrected = 0;
+  uint64_t m_numEccUncorrectable = 0;
 
   bool m_isKernelTimerOn = false;
   double m_curApiMsEstRuntime = 0.0;

@@ -194,7 +194,7 @@ pimUtils::threadPool::threadPool(size_t numThreads)
   for (size_t i = 1; i < numThreads; ++i) {
     m_threads.emplace_back([this] { workerThread(); });
   }
-  std::printf("PIM-Info: Created thread pool with %lu threads.\n", m_threads.size());
+  std::printf("PIM-Info: Created thread pool with %zu threads.\n", m_threads.size());
 }
 
 //! @brief  Thread pool dtor

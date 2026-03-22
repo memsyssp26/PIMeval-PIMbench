@@ -81,6 +81,40 @@ public:
     }
     return val;
   }
+  //! @brief  Directly set bits for V-layout functional simulation using bit vector
+  inline void setBitsVVec(unsigned rowIdx, unsigned colIdx, const std::vector<bool>& bits) {
+    unsigned numBits = bits.size();
+    assert(rowIdx + (numBits - 1) < m_numRows && colIdx < m_numCols);
+    for (unsigned i = 0; i < numBits; ++i) {
+      setBit(rowIdx + i, colIdx, bits[i]);
+    }
+  }
+  //! @brief  Directly get bits for V-layout functional simulation using bit vector
+  inline std::vector<bool> getBitsVVec(unsigned rowIdx, unsigned colIdx, unsigned numBits) const {
+    assert(rowIdx + (numBits - 1) < m_numRows && colIdx < m_numCols);
+    std::vector<bool> bits(numBits);
+    for (unsigned i = 0; i < numBits; ++i) {
+      bits[i] = getBit(rowIdx + i, colIdx);
+    }
+    return bits;
+  }
+  //! @brief  Directly set bits for H-layout functional simulation using bit vector
+  inline void setBitsHVec(unsigned rowIdx, unsigned colIdx, const std::vector<bool>& bits) {
+    unsigned numBits = bits.size();
+    assert(rowIdx < m_numRows && colIdx + (numBits - 1) < m_numCols);
+    for (unsigned i = 0; i < numBits; ++i) {
+      setBit(rowIdx, colIdx + i, bits[i]);
+    }
+  }
+  //! @brief  Directly get bits for H-layout functional simulation using bit vector
+  inline std::vector<bool> getBitsHVec(unsigned rowIdx, unsigned colIdx, unsigned numBits) const {
+    assert(rowIdx < m_numRows && colIdx + (numBits - 1) < m_numCols);
+    std::vector<bool> bits(numBits);
+    for (unsigned i = 0; i < numBits; ++i) {
+      bits[i] = getBit(rowIdx, colIdx + i);
+    }
+    return bits;
+  }
   //! @brief  Directly set #numBits bits for H-layout functional simulation
   inline void setBitsH(unsigned rowIdx, unsigned colIdx, uint64_t val, unsigned numBits) {
     assert(numBits > 0 && numBits <= 64);

@@ -26,12 +26,58 @@ This repository contains the PIMeval simulator and the PIMbench benchmark suite,
 
 ### Quick Start
 ```bash
-git clone <url_to_your_fork>
+git clone <url_to_this_repo>
 cd PIMeval-PIMbench/
-make -j<n_proc>
-cd /PIMbench/<application_dir>/PIM
-./<application_executable_name>.out
+./setup.sh
+make -j$(nproc || sysctl -n hw.ncpu)
+make check
 ```
+
+### Docker (Alternative)
+For a guaranteed consistent environment:
+```bash
+docker build -t pimeval .
+docker run -it pimeval
+```
+
+### Basic Usage Example
+Here is how to run a simple PIM addition with SECDED protection:
+
+```cpp
+#include "libpimeval.h"
+
+int main() {
+    // 1. Create a device
+    pimCreateDevice(PIM_DEVICE_BITSIMD_V, 1, 1, 2, 1024, 1024);
+
+    // 2. Enable ECC protection
+    setenv("PIMEVAL_ECC", "1", 1);
+    setenv("PIMEVAL_ECC_TYPE", "secded", 1);
+
+    // 3. Allocate and Copy
+    PimObjId obj = pimAlloc(PIM_ALLOC_AUTO, 128, PIM_INT32);
+    int32_t data[128] = { ... };
+    pimCopyHostToDevice(data, obj);
+
+    // 4. Inject Error (Optional)
+    pimInjectError(obj, 0, 0); // SECDED will correct this!
+
+    // 5. Sync back
+    int32_t results[128];
+    pimCopyDeviceToHost(obj, results);
+
+    pimShowStats();
+    pimDeleteDevice();
+}
+```
+
+### Documentation
+Comprehensive API documentation can be generated using Doxygen:
+```bash
+make docs
+# Open docs/doxygen/html/index.html in your browser
+```
+For architecture details on the new reliability framework, see [docs/ECC.md](docs/ECC.md).
 
 ### Code Structure
 

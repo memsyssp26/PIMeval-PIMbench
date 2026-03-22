@@ -26,6 +26,19 @@ dramsim3_integ: $(ALLDIRS)
 
 clean: $(ALLDIRS)
 
+check:
+	@$(MAKE) perf
+	@echo ">>> Verifying PIMeval Build <<<"
+	@$(MAKE) -C tests/ecc test-all
+	@echo "\n>>> Checking Standard PIMbench Kernel <<<"
+	@$(MAKE) -C PIMbench/vec-add/PIM perf > /dev/null
+	@cd PIMbench/vec-add/PIM && ./vec-add.out > /dev/null && echo "  vec-add: PASSED"
+	@echo "\n>>> All Checks Passed! <<<"
+
+docs:
+	@echo ">>> Generating Doxygen Documentation <<<"
+	@doxygen Doxyfile || echo "Error: doxygen not found. Please install it."
+
 # Run make with PIM_SIM_TARGET=<PimDeviceEnum> to override default simulation target
 PIM_SIM_TARGET ?= PIM_DEVICE_NONE
 

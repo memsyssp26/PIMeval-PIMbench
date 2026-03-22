@@ -33,17 +33,17 @@ public:
   bool isValidDevice(bool showMsg = true) const;
 
   // From pimSimConfig
-  const pimSimConfig& getConfig() const { return m_config; }
-  PimDeviceEnum getDeviceType() const { return m_config.getDeviceType(); }
-  PimDeviceEnum getSimTarget() const { return m_config.getSimTarget(); }
-  unsigned getNumRanks() const { return m_config.getNumRanks(); }
-  unsigned getNumBankPerRank() const { return m_config.getNumBankPerRank(); }
-  unsigned getNumSubarrayPerBank() const { return m_config.getNumSubarrayPerBank(); }
-  unsigned getNumRowPerSubarray() const { return m_config.getNumRowPerSubarray(); }
-  unsigned getNumColPerSubarray() const { return m_config.getNumColPerSubarray(); }
-  bool isAnalysisMode() const { return m_config.isAnalysisMode(); }
-  unsigned getNumThreads() const { return m_config.getNumThreads(); }
-  bool isDebug(pimSimConfig::pimDebugFlags flag) const { return m_config.getDebug() & flag; }
+  const pimSimConfig& getConfig() const { assert(m_config); return *m_config; }
+  PimDeviceEnum getDeviceType() const { return m_config->getDeviceType(); }
+  PimDeviceEnum getSimTarget() const { return m_config->getSimTarget(); }
+  unsigned getNumRanks() const { return m_config->getNumRanks(); }
+  unsigned getNumBankPerRank() const { return m_config->getNumBankPerRank(); }
+  unsigned getNumSubarrayPerBank() const { return m_config->getNumSubarrayPerBank(); }
+  unsigned getNumRowPerSubarray() const { return m_config->getNumRowPerSubarray(); }
+  unsigned getNumColPerSubarray() const { return m_config->getNumColPerSubarray(); }
+  bool isAnalysisMode() const { return m_config->isAnalysisMode(); }
+  unsigned getNumThreads() const { return m_config->getNumThreads(); }
+  bool isDebug(pimSimConfig::pimDebugFlags flag) const { return m_config->getDebug() & flag; }
 
   unsigned getNumCores() const;
   unsigned getNumRows() const;
@@ -65,6 +65,7 @@ public:
   PimObjId pimAllocBuffer(uint32_t numElements, PimDataType dataType);
   bool pimFree(PimObjId obj);
   bool pimInjectError(PimObjId obj, uint64_t elemIdx, unsigned bitIdx);
+  bool pimInjectBurstError(PimObjId obj, uint64_t elemIdx, unsigned bitIdx, unsigned length);
   PimObjId pimCreateRangedRef(PimObjId refId, uint64_t idxBegin, uint64_t idxEnd);
   PimObjId pimCreateDualContactRef(PimObjId refId);
 
@@ -165,7 +166,7 @@ private:
   void uninit();
 
   static pimSim* s_instance;
-  pimSimConfig m_config;
+  std::unique_ptr<pimSimConfig> m_config;
 
   // support one device for now
   std::unique_ptr<pimDevice> m_device;
