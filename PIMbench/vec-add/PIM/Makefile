@@ -12,13 +12,13 @@ SRC := vec-add.cpp
 # make USE_OPENMP=1
 USE_OPENMP ?= 0
 ifeq ($(USE_OPENMP),1)
-	CXXFLAGS += -fopenmp
+        CXXFLAGS += -fopenmp
 endif
 
 debug perf dramsim3_integ: $(EXEC)
 
-$(EXEC): $(SRC) $(DEPS)
-	$(CXX) $< $(CXXFLAGS) -o $@
+$(EXEC): $(SRC) $(LIBPIMEVAL_A)
+	$(CXX) $(SRC) $(CXXFLAGS) $(LDFLAGS) -o $@
 
 clean:
 	rm -rf $(EXEC) *.dSYM

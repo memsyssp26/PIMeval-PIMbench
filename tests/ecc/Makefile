@@ -9,16 +9,18 @@ UNIT_EXE = unit/test-ecc-math.out
 INTEG_EXE = integration/test-ecc-system.out
 HARDEN_EXE = hardening/test-ecc-hardening.out
 
-all: $(UNIT_EXE) $(INTEG_EXE) $(HARDEN_EXE)
+all: debug
 
-$(UNIT_EXE): $(UNIT_SRC)
-	$(CXX) $(UNIT_SRC) $(CXXFLAGS) -o $@
+debug perf dramsim3_integ: $(UNIT_EXE) $(INTEG_EXE) $(HARDEN_EXE)
 
-$(INTEG_EXE): $(INTEG_SRC)
-	$(CXX) $(INTEG_SRC) $(CXXFLAGS) -o $@
+$(UNIT_EXE): $(UNIT_SRC) $(LIBPIMEVAL_A)
+	$(CXX) $(UNIT_SRC) $(CXXFLAGS) $(LDFLAGS) -o $@
 
-$(HARDEN_EXE): $(HARDEN_SRC)
-	$(CXX) $(HARDEN_SRC) $(CXXFLAGS) -o $@
+$(INTEG_EXE): $(INTEG_SRC) $(LIBPIMEVAL_A)
+	$(CXX) $(INTEG_SRC) $(CXXFLAGS) $(LDFLAGS) -o $@
+
+$(HARDEN_EXE): $(HARDEN_SRC) $(LIBPIMEVAL_A)
+	$(CXX) $(HARDEN_SRC) $(CXXFLAGS) $(LDFLAGS) -o $@
 
 run-unit: $(UNIT_EXE)
 	./$(UNIT_EXE)
@@ -38,4 +40,4 @@ test-all: run-unit run-integ run-harden run-functional
 	@echo "--------------------------------------------------"
 
 clean:
-	rm -f $(UNIT_EXE) $(INTEG_EXE)
+	rm -f $(UNIT_EXE) $(INTEG_EXE) $(HARDEN_EXE)

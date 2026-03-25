@@ -18,8 +18,8 @@ class pimCmdFuse : public pimCmd
 public:
   pimCmdFuse(PimProg prog) : pimCmd(PimCmdEnum::NOOP), m_prog(prog) {}
   virtual ~pimCmdFuse() {}
-  virtual bool execute() override;
-  virtual bool updateStats() const override;
+  virtual PimStatus execute() override;
+  virtual PimStatus updateStats() const override;
 private:
   PimProg m_prog;
 };

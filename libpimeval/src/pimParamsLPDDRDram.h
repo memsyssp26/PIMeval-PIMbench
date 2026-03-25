@@ -8,7 +8,7 @@
 #define LAVA_PIM_PARAMS_LPDDR_DRAM_H
 
 #include <string>
-#include <unordered_map>
+#include <map>
 #include "pimParamsDram.h"
 
 //! @class  pimParamsLPDDRDram
@@ -17,7 +17,7 @@ class pimParamsLPDDRDram : public pimParamsDram
 {
 public:
   pimParamsLPDDRDram();
-  pimParamsLPDDRDram(std::unordered_map<std::string, std::string> params);
+  pimParamsLPDDRDram(std::map<std::string, std::string> params);
   ~pimParamsLPDDRDram() override = default;
 
   int getDeviceWidth() const override { return m_deviceWidth;}

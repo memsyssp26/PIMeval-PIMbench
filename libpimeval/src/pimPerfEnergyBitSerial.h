@@ -29,6 +29,8 @@ public:
   virtual pimeval::perfEnergy getPerfEnergyForRotate(PimCmdEnum cmdType, const pimObjInfo& obj) const override;
   virtual pimeval::perfEnergy getPerfEnergyForPrefixSum(PimCmdEnum cmdType, const pimObjInfo& obj) const override;
 
+  virtual pimeval::perfEnergy getPerfEnergyForRowBitOp(PimCmdEnum cmdType, const pimObjInfo& obj) const override;
+
 protected:
   pimeval::perfEnergy getPerfEnergyBitSerial(PimDeviceEnum deviceType, PimCmdEnum cmdType, unsigned numPass, const pimObjInfo& objSrc1, const pimObjInfo& objSrc2, const pimObjInfo& objDest) const;
   pimeval::perfEnergy getPerfEnergyTypeConversion(PimDeviceEnum deviceType, PimCmdEnum cmdType, const pimObjInfo& objSrc, const pimObjInfo& objDest) const;

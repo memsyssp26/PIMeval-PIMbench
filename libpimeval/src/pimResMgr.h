@@ -9,6 +9,7 @@
 
 #include "libpimeval.h"      // for PimObjId, PimDataType
 #include "pimUtils.h"        // for getNumBitsOfDataType, signExt, pimDataTypeEnumToStr, castTypeToBits
+#include "pimMemoryTier.h"
 #include <cinttypes>
 #include <vector>            // for vector
 #include <unordered_map>     // for unordered_map
@@ -70,90 +71,12 @@ private:
   bool m_isBuffer = false;  // true if this region is a buffer region
 };
 
-//! @class  pimDataHolder
-//! @brief  A container holding raw data vector of a PIM object as a byte array
-//! Assumption: Caller gurantees correct range and indices
-class pimDataHolder
-{
-public:
-  pimDataHolder(PimDataType dataType, uint64_t numElements)
-    : m_dataType(dataType),
-      m_numElements(numElements)
-  {
-    unsigned numBitsOfDataType = pimUtils::getNumBitsOfDataType(m_dataType, PimBitWidth::HOST);
-    // Note: Each data element is stored as m_bytesPerElement bytes in this data holder.
-    // This aligns with the number of bytes per element in the host void* ptr for memcpy.
-    m_bytesPerElement = (numBitsOfDataType + 7) / 8;  // round up, e.g. 1 byte per bool
-    m_data.resize(m_numElements * m_bytesPerElement);
-  }
-  ~pimDataHolder() {}
-
-  // return the number of bytes within a given range
-  uint64_t getNumBytes(uint64_t idxBegin, uint64_t idxEnd) const {
-    uint64_t numElements = (idxEnd == 0 ? m_numElements : idxEnd - idxBegin);
-    return numElements * m_bytesPerElement;
-  }
-
-  // copy data of range [idxBegin, idxEnd) from host ptr into holder
-  // use full range if idxEnd is default 0
-  bool copyFromHost(void* src, uint64_t idxBegin = 0, uint64_t idxEnd = 0) {
-    uint64_t byteIndex = idxBegin * m_bytesPerElement;
-    uint64_t numBytes = getNumBytes(idxBegin, idxEnd);
-    std::memcpy(m_data.data() + byteIndex, src, numBytes);
-    return true;
-  }
-
-  // copy data of range [idxBegin, idxEnd) from holder to host ptr
-  // use full range if idxEnd is default 0
-  bool copyToHost(void* dest, uint64_t idxBegin = 0, uint64_t idxEnd = 0) const {
-    uint64_t byteIndex = idxBegin * m_bytesPerElement;
-    uint64_t numBytes = getNumBytes(idxBegin, idxEnd);
-    std::memcpy(dest, m_data.data() + byteIndex, numBytes);
-    return true;
-  }
-
-  // copy data of range [idxBegin, idxEnd) from this holder to another holder
-  // use full range if idxEnd is default 0
-  bool copyToObj(pimDataHolder& dest, uint64_t idxBegin = 0, uint64_t idxEnd = 0) const {
-    uint64_t byteIndex = idxBegin * m_bytesPerElement;
-    uint64_t numBytes = getNumBytes(idxBegin, idxEnd);
-    std::memcpy(dest.m_data.data() + byteIndex, m_data.data() + byteIndex, numBytes);
-    return true;
-  }
-
-  // set an element at index from bit representation
-  bool setElementBits(uint64_t index, uint64_t bits) {
-    uint64_t byteIndex = index * m_bytesPerElement;
-    std::memset(m_data.data() + byteIndex, 0, m_bytesPerElement);
-    std::memcpy(m_data.data() + byteIndex, &bits, m_bytesPerElement);
-    return true;
-  }
-
-  // get bit representation of an element at index
-  bool getElementBits(uint64_t index, uint64_t &bits) const {
-    bits = 0;
-    uint64_t byteIndex = index * m_bytesPerElement;
-    std::memcpy(&bits, m_data.data() + byteIndex, m_bytesPerElement);
-    bits = pimUtils::signExt(bits, m_dataType);
-    return true;
-  }
-
-  // print all bytes for debugging
-  void print() const {
-    printf("PIM obj data holder: data-type = %s, num-elements = %" PRIu64 ", bytes-per-element = %u\n",
-           pimUtils::pimDataTypeEnumToStr(m_dataType).c_str(), m_numElements, m_bytesPerElement);
-    for (size_t i = 0; i < m_data.size(); ++i) {
-      std::printf(" %02x", m_data[i]);
-      if ((i + 1) % 64 == 0) { std::printf("\n"); }
-    }
-    std::printf("\n");
-  }
-
-private:
-  std::vector<uint8_t> m_data;
-  PimDataType m_dataType;
-  uint64_t m_numElements;
-  unsigned m_bytesPerElement;
+//! @enum   PimObjSyncState
+//! @brief  Sync state between functional data holder and bit-mapped simulated memory
+enum class PimObjSyncState {
+  CLEAN = 0,
+  DIRTY_FUNCTIONAL,  // Most recent data is in functional data holder
+  DIRTY_BIT_MAPPED   // Most recent data is in bit-mapped simulated memory
 };
 
 //! @class  pimObjInfo
@@ -169,22 +92,26 @@ public:
       m_assocObjId(objId),
       m_dataType(dataType),
       m_allocType(allocType),
-      m_data(dataType, numElements),
       m_numElements(numElements),
       m_bitsPerElementPadded(bitsPerElementPadded),
       m_device(device)
-  {}
+  {
+    m_functionalTier = std::make_unique<pimFunctionalTier>(dataType, numElements);
+    m_bitMappedTier = std::make_unique<pimBitMappedTier>(device, objId, numElements);
+  }
   pimObjInfo(PimObjId objId, PimDataType dataType, PimAllocEnum allocType, uint64_t numElements, unsigned bitsPerElementPadded, pimDevice* device, bool isBuffer)
     : m_objId(objId),
       m_assocObjId(objId),
       m_dataType(dataType),
       m_allocType(allocType),
-      m_data(dataType, numElements),
       m_numElements(numElements),
       m_bitsPerElementPadded(bitsPerElementPadded),
       m_device(device),
       m_isBuffer(isBuffer)
-  {}
+  {
+    m_functionalTier = std::make_unique<pimFunctionalTier>(dataType, numElements);
+    m_bitMappedTier = std::make_unique<pimBitMappedTier>(device, objId, numElements);
+  }
   virtual ~pimObjInfo();
 
   void addRegion(pimRegion region) { m_regions.push_back(region); }
@@ -220,13 +147,13 @@ public:
 
   void print() const;
 
-  // Note: Below functions are wraper APIs to access PIM object data holder
+  // Note: Below functions are wraper APIs to access PIM object memory tiers
   // For regular PIM objects:
   // - Support host-to-device, device-to-host, and device-to-device copying
   // - Use bit representation to set or get an element at specific element index
   // - Support ranges in [idxBegin, idxEnd). Use full range if idxEnd is 0
   // For reference PIM objects:
-  // - A ref object directly access the data holder of the ref-to object
+  // - A ref object directly access the memory tiers of the ref-to object
   // - Dual-contact ref negates all bits during operations
   void copyFromHost(void* src, uint64_t idxBegin = 0, uint64_t idxEnd = 0);
   void copyToHost(void* dest, uint64_t idxBegin = 0, uint64_t idxEnd = 0) const;
@@ -238,14 +165,24 @@ public:
   }
 
   // Note: Below two functions are for supporting mixed functional and micro-ops level simulation.
-  // Functional simulation purely uses this PIM data holder for simulation speed,
-  // while micro-ops level simulation uses simulated 2D memory arrays.
+  // Functional simulation purely uses the functional memory tier for simulation speed,
+  // while micro-ops level simulation uses the bit-mapped simulated memory tier.
   // When a functional API is called during micro-ops level simulation, call below two functions
-  // to sync the data between this PIM data holder and simulated memory arrays.
+  // to sync the data between the functional and bit-mapped tiers.
   void syncFromSimulatedMem();
+  void syncFromSimulatedMem(const pimRegion& region);
   void syncToSimulatedMem() const;
-  void injectError(uint64_t elemIdx, unsigned bitIdx);
-  void injectBurstError(uint64_t elemIdx, unsigned bitIdx, unsigned length);
+  void syncToSimulatedMem(const pimRegion& region) const;
+
+  // Sync state management
+  void markDirtyFunctional() { m_syncState = PimObjSyncState::DIRTY_FUNCTIONAL; }
+  void markDirtyBitMapped() { m_syncState = PimObjSyncState::DIRTY_BIT_MAPPED; }
+  void markClean() { m_syncState = PimObjSyncState::CLEAN; }
+  PimObjSyncState getSyncState() const { return m_syncState; }
+
+  // Tier access
+  pimFunctionalTier* getFunctionalTier() { return m_functionalTier.get(); }
+  pimBitMappedTier* getBitMappedTier() { return m_bitMappedTier.get(); }
 
 private:
   PimObjId m_objId = -1;
@@ -253,7 +190,8 @@ private:
   std::shared_ptr<pimObjInfo> m_refObj = nullptr;
   PimDataType m_dataType;
   PimAllocEnum m_allocType;
-  pimDataHolder m_data;
+  std::unique_ptr<pimFunctionalTier> m_functionalTier;
+  std::unique_ptr<pimBitMappedTier> m_bitMappedTier;
   uint64_t m_numElements = 0;
   unsigned m_bitsPerElementPadded = 0;
   unsigned m_numCoreAvailable = 0;
@@ -266,6 +204,7 @@ private:
   pimDevice* m_device = nullptr; // for accessing simulated memory
   bool m_isLoadBalanced = true;
   bool m_isBuffer = false; // true if this is a global buffer
+  PimObjSyncState m_syncState = PimObjSyncState::CLEAN;
 };
 
 
@@ -280,9 +219,7 @@ public:
   PimObjId pimAlloc(PimAllocEnum allocType, uint64_t numElements, PimDataType dataType);
   PimObjId pimAllocAssociated(PimObjId assocId, PimDataType dataType);
   PimObjId pimAllocBuffer(uint32_t numElements, PimDataType dataType);
-  bool pimFree(PimObjId obj);
-  bool pimInjectError(PimObjId obj, uint64_t elemIdx, unsigned bitIdx);
-  bool pimInjectBurstError(PimObjId obj, uint64_t elemIdx, unsigned bitIdx, unsigned length);
+  PimStatus pimFree(PimObjId obj);
   PimObjId pimCreateRangedRef(PimObjId refId, uint64_t idxBegin, uint64_t idxEnd);
   PimObjId pimCreateDualContactRef(PimObjId refId);
 
@@ -294,30 +231,38 @@ public:
   bool isHLayoutObj(PimObjId objId) const;
   bool isHybridLayoutObj(PimObjId objId) const;
 
-  void freeRegion(PimCoreId coreId, PimObjId objId);
+  void reset();
 
 private:
   pimRegion findAvailRegionOnCore(PimCoreId coreId, unsigned numAllocRows, unsigned numAllocCols) const;
   std::vector<PimCoreId> getCoreIdsSortedByLeastUsage() const;
   
   //! @class  coreUsage
-  //! @brief  Track row usage for allocation
+  //! @brief  Track row usage for allocation using interval-based tracking
   class coreUsage {
   public:
-    coreUsage(unsigned numRowsPerCore) : m_numRowsPerCore(numRowsPerCore) {}
+    coreUsage(unsigned numRowsPerCore) : m_numRowsPerCore(numRowsPerCore) {
+      m_freeIntervals[0] = numRowsPerCore;
+    }
     ~coreUsage() {}
     unsigned getNumRowsPerCore() const { return m_numRowsPerCore; }
     unsigned getTotRowsInUse() const { return m_totRowsInUse; }
     unsigned findAvailRange(unsigned numRowsToAlloc);
+    bool isAvailable(unsigned rowIdx, unsigned numRows) const;
     void addRange(std::pair<unsigned, unsigned> range, PimObjId objId);
     void deleteObj(PimObjId objId);
     void newAllocStart();
     void newAllocEnd(bool success);
+    void reset();
+    
   private:
+    void mergeFreeIntervals();
     unsigned m_numRowsPerCore = 0;
     unsigned m_totRowsInUse = 0;
-    std::map<std::pair<unsigned, unsigned>, PimObjId> m_rangesInUse;
-    std::set<std::pair<unsigned, unsigned>> m_newAlloc;
+    std::map<unsigned, unsigned> m_freeIntervals; // startIdx -> length
+    std::map<unsigned, unsigned> m_usedIntervals; // startIdx -> length (persisted)
+    std::map<unsigned, unsigned> m_tempIntervals; // startIdx -> length (pending)
+    std::map<PimObjId, std::vector<std::pair<unsigned, unsigned>>> m_objToIntervals;
   };
 
   pimDevice* m_device;

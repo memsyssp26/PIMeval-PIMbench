@@ -3,32 +3,59 @@
 # This file is licensed under the MIT License.
 # See the LICENSE file in the root of this repository for more details.
 
-CXX := g++
-CXXFLAGS := -std=c++17 -Wall
+# Root directory of the project
+PROJ_ROOT := $(realpath $(dir $(lastword $(MAKEFILE_LIST))))
 
-# Setup libpimeval library
-PROJ_ROOT ?= .
-LIBPIMEVAL_PATH ?= $(PROJ_ROOT)/libpimeval
+# Compiler settings
+CXX := g++
+CXXFLAGS := -std=c++17 -Wall -Wextra
+
+# Mode handling (default to perf)
+ifeq ($(MAKECMDGOALS),)
+  MODE := perf
+else ifeq ($(MAKECMDGOALS),debug)
+  MODE := debug
+else ifeq ($(MAKECMDGOALS),dramsim3_integ)
+  MODE := dramsim3_integ
+else ifeq ($(MAKECMDGOALS),perf)
+  MODE := perf
+else
+  # Default to perf if multiple targets or unknown target
+  MODE := perf
+endif
+
+# PIMeval Library Paths
+LIBPIMEVAL_PATH := $(PROJ_ROOT)/libpimeval
 INC_DIR := $(LIBPIMEVAL_PATH)/include
-LIB_DIR := $(LIBPIMEVAL_PATH)/lib
+# Use mode-specific library directory to avoid cross-contamination of archives
+LIB_DIR := $(LIBPIMEVAL_PATH)/lib/$(MODE)
 UTIL_DIR := $(PROJ_ROOT)/util
-CXXFLAGS += -I$(INC_DIR) -I$(UTIL_DIR) -L$(LIB_DIR) -lpimeval
-DEPS := $(INC_DIR)/libpimeval.h $(LIB_DIR)/libpimeval.a
+
+# Base Include flags (always needed)
+CXXFLAGS += -I$(INC_DIR) -I$(UTIL_DIR)
+
+# Mode-specific flags
+ifeq ($(MODE),debug)
+  CXXFLAGS += -g -O0
+else ifeq ($(MODE),perf)
+  CXXFLAGS += -O3 -Wno-unknown-pragmas
+else ifeq ($(MODE),dramsim3_integ)
+  CXXFLAGS += -O3 -DDRAMSIM3_INTEG
+  DRAMSIM3_PATH ?= $(PROJ_ROOT)/third-party/DRAMsim3
+  CXXFLAGS += -I$(DRAMSIM3_PATH)/src -I$(DRAMSIM3_PATH)/ext/headers
+  LDFLAGS  += -L$(DRAMSIM3_PATH)/build -ldramsim3
+  # Pass DRAMSIM3_PATH as a macro for absolute path resolution in code
+  CXXFLAGS += -DDRAMSIM3_PATH=\"$(DRAMSIM3_PATH)\"
+endif
+
+# Linker flags: Add library path and name to CXXFLAGS for easy linking in sub-modules
+# but skip if we are building the library itself.
+ifneq ($(shell pwd), $(LIBPIMEVAL_PATH))
+  CXXFLAGS += -L$(LIB_DIR) -lpimeval $(LDFLAGS)
+endif
+
+# Common artifacts
+LIBPIMEVAL_A := $(LIB_DIR)/libpimeval.a
+LIBPIMEVAL_H := $(INC_DIR)/libpimeval.h
 
 .PHONY: debug perf dramsim3_integ clean
-.DEFAULT_GOAL := perf
-
-# Setup build targets
-ifeq ($(MAKECMDGOALS),)
-	MAKECMDGOALS := $(.DEFAULT_GOAL)
-endif
-ifeq ($(MAKECMDGOALS),debug)
-	CXXFLAGS += -g
-endif
-ifeq ($(MAKECMDGOALS),perf)
-	CXXFLAGS += -O3 -Wno-unknown-pragmas
-endif
-ifeq ($(MAKECMDGOALS),dramsim3_integ)
-	CXXFLAGS += -O3 -DDRAMSIM3_INTEG
-endif
-

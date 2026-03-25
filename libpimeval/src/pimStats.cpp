@@ -86,7 +86,8 @@ pimStatsMgr::showDeviceParams() const
               pimSim::get()->getNumRowPerSubarray(),
               pimSim::get()->getNumColPerSubarray());
   std::printf(" %30s : %u\n", "Number of PIM Cores", pimSim::get()->getNumCores());
-  std::printf(" %30s : %u\n", "Number of Rows per Core", pimSim::get()->getNumRows());
+  std::printf(" %30s : %u\n", "Total Rows", pimSim::get()->getNumRows());
+  std::printf(" %30s : %u\n", "Number of Rows per Core", pimSim::get()->getNumCores() > 0 ? pimSim::get()->getNumRows() / pimSim::get()->getNumCores() : 0);
   std::printf(" %30s : %u\n", "Number of Cols per Core", pimSim::get()->getNumCols());
   std::printf(" %30s : %f GB/s\n", "Typical Rank BW", paramsDram.getTypicalRankBW());
   std::printf(" %30s : %f\n", "Row Read (ns)", paramsDram.getNsRowRead());
@@ -186,6 +187,8 @@ pimStatsMgr::resetStats()
 void
 pimStatsMgr::recordCmd(const std::string& cmdName, pimeval::perfEnergy mPerfEnergy)
 {
+  // Always record if called, but debug print timer state
+  std::printf("PIM-Debug: recordCmd %s runtime=%f energy=%f timer=%d\n", cmdName.c_str(), mPerfEnergy.m_msRuntime, mPerfEnergy.m_mjEnergy, (int)m_isKernelTimerOn);
   auto& item = m_cmdPerf[cmdName];
   item.first++;
   item.second.m_msRuntime += mPerfEnergy.m_msRuntime;
@@ -311,4 +314,3 @@ pimStatsMgr::showEccStats() const
     std::printf(" %45s : %llu events\n", "Uncorrectable Errors", (unsigned long long)m_numEccUncorrectable);
   }
 }
-

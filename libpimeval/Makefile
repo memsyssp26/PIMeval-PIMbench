@@ -14,9 +14,12 @@ ARFLAGS := rcs
 THIRD_PARTY_LIB :=
 
 SRCDIR := src
-BUILDDIR := build
-LIBDIR := lib
 INCDIR := include
+
+# Default target
+PIM_LIB_TARGET ?= perf
+BUILDDIR := build/$(PIM_LIB_TARGET)
+LIBDIR := lib/$(PIM_LIB_TARGET)
 
 SRC := $(wildcard $(SRCDIR)/*.cpp)
 OBJ := $(patsubst $(SRCDIR)/%.cpp,$(BUILDDIR)/%.o,$(SRC))
@@ -26,19 +29,19 @@ TARGET := $(LIBDIR)/libpimeval.a
 .PHONY: debug perf dramsim3_integ clean create_link
 .DEFAULT_GOAL := perf
 
-ifeq ($(MAKECMDGOALS),)
-	MAKECMDGOALS := $(.DEFAULT_GOAL)
-endif
-
+# Override PIM_LIB_TARGET based on goal
 ifeq ($(MAKECMDGOALS),debug)
+	PIM_LIB_TARGET := debug
 	CXXFLAGS += $(CXXFLAGS_DEBUG)
 endif
 
 ifeq ($(MAKECMDGOALS),perf)
+	PIM_LIB_TARGET := perf
 	CXXFLAGS += $(CXXFLAGS_PERF)
 endif
 
 ifeq ($(MAKECMDGOALS),dramsim3_integ)
+	PIM_LIB_TARGET := dramsim3_integ
 	CXXFLAGS += $(CXX_FLAGS_PERF) -DDRAMSIM3_INTEG
 	DRAMSIM3_SRC=$(DRAMSIM3_PATH)/src
 	DRAMSIM3_EXT=$(DRAMSIM3_PATH)/ext/headers
@@ -46,18 +49,24 @@ ifeq ($(MAKECMDGOALS),dramsim3_integ)
 	THIRD_PARTY_LIB += $(DRAMSIM3_PATH)/build/libdramsim3.a
 endif
 
+# Re-calculate dirs in case they changed
+BUILDDIR := build/$(PIM_LIB_TARGET)
+LIBDIR := lib/$(PIM_LIB_TARGET)
+OBJ := $(patsubst $(SRCDIR)/%.cpp,$(BUILDDIR)/%.o,$(SRC))
+TARGET := $(LIBDIR)/libpimeval.a
+
 # Run "make PIM_SIM_TARGET=<PimDeviceEnum>" to override default simulation target
 PIM_SIM_TARGET ?= PIM_DEVICE_NONE
 CXXFLAGS += -DPIM_SIM_TARGET=$(PIM_SIM_TARGET)
 
 debug: $(TARGET)
-	@echo "INFO: libpimeval target = $(MAKECMDGOALS), CXXFLAGS = $(CXXFLAGS)"
+	@echo "INFO: libpimeval target = debug, CXXFLAGS = $(CXXFLAGS)"
 
 perf: $(TARGET)
-	@echo "INFO: libpimeval target = $(MAKECMDGOALS), CXXFLAGS = $(CXXFLAGS)"
+	@echo "INFO: libpimeval target = perf, CXXFLAGS = $(CXXFLAGS)"
 
 dramsim3_integ: $(TARGET)
-	@echo "INFO: libpimeval target = $(MAKECMDGOALS), CXXFLAGS = $(CXXFLAGS)"
+	@echo "INFO: libpimeval target = dramsim3_integ, CXXFLAGS = $(CXXFLAGS)"
 
 $(TARGET): $(OBJ) | $(LIBDIR)
 	$(AR) $(ARFLAGS) $@ $^ $(THIRD_PARTY_LIB)
@@ -69,11 +78,10 @@ $(BUILDDIR) $(LIBDIR):
 	mkdir -p $@
 
 clean:
-	$(RM) -rv $(BUILDDIR) $(LIBDIR)
+	$(RM) -rv build lib
 
 create_link:
 	mkdir -p $(INCDIR)
 	if [ ! -e $(INCDIR)/libpimeval.h ] ; then \
 		ln -s ../$(SRCDIR)/libpimeval.h $(INCDIR)/libpimeval.h ; \
 	fi
-

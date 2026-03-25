@@ -50,7 +50,7 @@ fi
 #   Type 2: FP errors in PIMeval outputs, e.g., performance and energy numbers
 #   The fuzzyEqualPercent function is for handling Type 1. The fuzzy_diff.py is for Type 2.
 
-if $SCRIPT_DIR/fuzzy_diff.py "$GOLDEN" "$LOCAL" > /dev/null; then
+if python3 $SCRIPT_DIR/fuzzy_diff.py "$GOLDEN" "$LOCAL" > /dev/null; then
     echo
     echo "########################################################################################"
     echo "PIMeval Functional Testing >>>>> PASSED"
@@ -62,7 +62,7 @@ else
     echo
     echo "########################################################################################"
     echo
-    $SCRIPT_DIR/fuzzy_diff.py "$GOLDEN" "$LOCAL"
+    python3 $SCRIPT_DIR/fuzzy_diff.py "$GOLDEN" "$LOCAL"
     echo
     echo "########################################################################################"
     echo "PIMeval Functional Testing >>>>> FAILED !!!!!"

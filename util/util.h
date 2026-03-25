@@ -90,8 +90,15 @@ void flatten3DMat(std::vector<std::vector<std::vector<int>>>& inputMatrix, std::
   }
 }
 
-bool createDevice(const char *configFile)
+bool createDevice(const char *configFile, int *argc = nullptr, char ***argv = nullptr)
 {
+  // Pre-parse --pim-* CLI args if provided. These are stored internally and
+  // applied when the device config is derived, allowing users to pass flags
+  // like --pim-ecc=1 --pim-ecc_type=secded directly to any benchmark.
+  if (argc && argv) {
+    pimInit(argc, argv);
+  }
+
   if (configFile == nullptr)
   {
     // Each rank has 8 chips; Total Bank = 16; Each Bank contains 32 subarrays;

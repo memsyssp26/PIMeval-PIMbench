@@ -8,6 +8,7 @@
 
 #include "test-functional.h"
 #include "libpimeval.h"
+#include "pimUtils.h"
 #include <cassert>
 #include <vector>
 #include <iostream>
@@ -70,12 +71,38 @@ testFunctional::testFp(const std::string& category, PimDataType dataType)
 
   // Copy src vectors from host to PIM
   PimStatus status = PIM_OK;
-  status = pimCopyHostToDevice((void*)vecSrc1.data(), objSrc1);
-  assert(status == PIM_OK);
-  status = pimCopyHostToDevice((void*)vecSrc2.data(), objSrc2);
-  assert(status == PIM_OK);
-  status = pimCopyHostToDevice((void*)vecSrc2nz.data(), objSrc2nz);
-  assert(status == PIM_OK);
+  if (dataType == PIM_FP32) {
+    status = pimCopyHostToDevice((void*)vecSrc1.data(), objSrc1);
+    assert(status == PIM_OK);
+    status = pimCopyHostToDevice((void*)vecSrc2.data(), objSrc2);
+    assert(status == PIM_OK);
+    status = pimCopyHostToDevice((void*)vecSrc2nz.data(), objSrc2nz);
+    assert(status == PIM_OK);
+  } else {
+    // For FP16, BF16, FP8, convert float to bits first
+    unsigned bitsPerElem = pimUtils::getNumBitsOfDataType(dataType, PimBitWidth::HOST);
+    if (bitsPerElem == 16) {
+      std::vector<uint16_t> bits1(numElements), bits2(numElements), bits3(numElements);
+      for (unsigned i = 0; i < numElements; ++i) {
+        bits1[i] = static_cast<uint16_t>(pimUtils::castFloatToBits(dataType, vecSrc1[i]));
+        bits2[i] = static_cast<uint16_t>(pimUtils::castFloatToBits(dataType, vecSrc2[i]));
+        bits3[i] = static_cast<uint16_t>(pimUtils::castFloatToBits(dataType, vecSrc2nz[i]));
+      }
+      status = pimCopyHostToDevice((void*)bits1.data(), objSrc1); assert(status == PIM_OK);
+      status = pimCopyHostToDevice((void*)bits2.data(), objSrc2); assert(status == PIM_OK);
+      status = pimCopyHostToDevice((void*)bits3.data(), objSrc2nz); assert(status == PIM_OK);
+    } else if (bitsPerElem == 8) {
+      std::vector<uint8_t> bits1(numElements), bits2(numElements), bits3(numElements);
+      for (unsigned i = 0; i < numElements; ++i) {
+        bits1[i] = static_cast<uint8_t>(pimUtils::castFloatToBits(dataType, vecSrc1[i]));
+        bits2[i] = static_cast<uint8_t>(pimUtils::castFloatToBits(dataType, vecSrc2[i]));
+        bits3[i] = static_cast<uint8_t>(pimUtils::castFloatToBits(dataType, vecSrc2nz[i]));
+      }
+      status = pimCopyHostToDevice((void*)bits1.data(), objSrc1); assert(status == PIM_OK);
+      status = pimCopyHostToDevice((void*)bits2.data(), objSrc2); assert(status == PIM_OK);
+      status = pimCopyHostToDevice((void*)bits3.data(), objSrc2nz); assert(status == PIM_OK);
+    }
+  }
 
   // Define tests : test name -> test id
   std::map<int, std::string> tests = {
@@ -206,14 +233,34 @@ testFunctional::testFp(const std::string& category, PimDataType dataType)
     if (cmpAPIs.find(testName) != cmpAPIs.end()) {
       status = pimCopyDeviceToHost(objDestBool, (void *)vecDestBool.data());
       assert(status == PIM_OK);
-    } else {
+    } else if (dataType == PIM_FP32) {
       status = pimCopyDeviceToHost(objDest, (void *)vecDest.data());
       assert(status == PIM_OK);
+    } else {
+      unsigned bitsPerElem = pimUtils::getNumBitsOfDataType(dataType, PimBitWidth::HOST);
+      if (bitsPerElem == 16) {
+        std::vector<uint16_t> bits(numElements);
+        status = pimCopyDeviceToHost(objDest, (void *)bits.data()); assert(status == PIM_OK);
+        for (unsigned i = 0; i < numElements; ++i) vecDest[i] = pimUtils::castBitsToFloat(dataType, bits[i]);
+      } else if (bitsPerElem == 8) {
+        std::vector<uint8_t> bits(numElements);
+        status = pimCopyDeviceToHost(objDest, (void *)bits.data()); assert(status == PIM_OK);
+        for (unsigned i = 0; i < numElements; ++i) vecDest[i] = pimUtils::castBitsToFloat(dataType, bits[i]);
+      }
     }
 
     // Skip result verification in analysis mode
     if (pimIsAnalysisMode()) {
       continue;
+    }
+
+    T tolerance = 1e-3; // Default for FP32: 0.001%
+    if (dataType == PIM_FP16) {
+      tolerance = 0.1; // 0.1%
+    } else if (dataType == PIM_BF16) {
+      tolerance = 1.0; // 1%
+    } else if (dataType == PIM_FP8) {
+      tolerance = 5.0; // 5%
     }
 
     // Verify results
@@ -225,7 +272,7 @@ testFunctional::testFp(const std::string& category, PimDataType dataType)
       for (uint64_t i = begin + 1; i < end; ++i) {
         minExpected = std::min(minExpected, vecSrc1[i]);
       }
-      if (!fuzzyEqualPercent(min, minExpected)) {
+      if (!fuzzyEqualPercent(min, minExpected, tolerance)) {
         std::cout << "Large FP reduction min error: Result: " << min 
                   << " Expected: " << minExpected << std::endl;
         assert(0);
@@ -238,7 +285,7 @@ testFunctional::testFp(const std::string& category, PimDataType dataType)
       for (uint64_t i = begin + 1; i < end; ++i) {
         maxExpected = std::max(maxExpected, vecSrc1[i]);
       }
-      if (!fuzzyEqualPercent(max, maxExpected)) {
+      if (!fuzzyEqualPercent(max, maxExpected, tolerance)) {
         std::cout << "Large FP reduction max error: Result: " << max 
                   << " Expected: " << maxExpected << std::endl;
         assert(0);
@@ -252,7 +299,7 @@ testFunctional::testFp(const std::string& category, PimDataType dataType)
         sumFP32Expected += vecSrc1[i];
       }
       // Allowing a small tolerance here because of multithreaded reduction in pimCmd
-      if (!fuzzyEqualPercent(sumFP32, sumFP32Expected)) {
+      if (!fuzzyEqualPercent(sumFP32, sumFP32Expected, static_cast<float>(tolerance))) {
         std::cout << "Large FP reduction sum error: Result: " << sumFP32 << " Expected: " << sumFP32Expected << std::endl;
         assert(0);
       }
@@ -328,7 +375,7 @@ testFunctional::testFp(const std::string& category, PimDataType dataType)
           case 41: expected = vecSrc1[i];                break; // pimCopyObjectToObject 
           default: assert(0);
         }
-        if (!fuzzyEqualPercent(vecDest[i], expected)) {
+        if (!fuzzyEqualPercent(vecDest[i], expected, tolerance)) {
           if (numError < maxErrorToShow) {
           std::cout << "Error: Index = " << i << " Result = " << std::fixed << std::setprecision(12) << vecDest[i] << " Expected = " << std::fixed << std::setprecision(12) << expected << std::endl;
           }

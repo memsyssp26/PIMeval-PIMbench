@@ -293,6 +293,7 @@ bitSerialBase::testInt(const std::string& category, PimDataType dataType)
     }
 
     pimResetStats();
+    pimStartTimer();
 
     if (isSigned) {
       switch (testId) {
@@ -364,6 +365,7 @@ bitSerialBase::testInt(const std::string& category, PimDataType dataType)
       }
     }
 
+    pimEndTimer();
     pimShowStats();
 
     pimCopyDeviceToHost(dest1, (void*)vecDestVerify.data());
@@ -495,6 +497,7 @@ bitSerialBase::testFp(const std::string& category, PimDataType dataType)
     }
 
     pimResetStats();
+    pimStartTimer();
 
     if (numBits == 32) {
       switch (testId) {
@@ -508,6 +511,7 @@ bitSerialBase::testFp(const std::string& category, PimDataType dataType)
       }
     }
 
+    pimEndTimer();
     pimShowStats();
 
     pimCopyDeviceToHost(dest1, (void*)vecDestVerify.data());
@@ -563,4 +567,3 @@ bitSerialBase::testFp(const std::string& category, PimDataType dataType)
 
 
 #endif
-

@@ -45,7 +45,7 @@ std::unique_ptr<pimParamsDram> pimParamsDram::create(PimDeviceProtocolEnum devic
 // Static factory method to create appropriate subclass based on config file
 std::unique_ptr<pimParamsDram> pimParamsDram::createFromConfig(const std::string& memConfigFilePath)
 {
-  std::unordered_map<std::string, std::string> params = pimUtils::readParamsFromConfigFile(memConfigFilePath);
+  std::map<std::string, std::string> params = pimUtils::readParamsFromConfigFile(memConfigFilePath);
 
   // Check if the "protocol" key exists
   if (params.find("protocol") == params.end())
@@ -55,7 +55,7 @@ std::unique_ptr<pimParamsDram> pimParamsDram::createFromConfig(const std::string
   }
 
   // Extract protocol from params
-  std::string deviceProtocol = params["protocol"];
+  std::string deviceProtocol = params.at("protocol");
 
   // Instantiate the appropriate subclass based on the protocol
   if (deviceProtocol == "DDR3" || deviceProtocol == "DDR4" || deviceProtocol == "DDR5")

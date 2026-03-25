@@ -83,7 +83,7 @@ pimParamsHBMDram::pimParamsHBMDram()
 }
 
 //! @brief  pimParamsHBMDram ctor with a config file
-pimParamsHBMDram::pimParamsHBMDram(std::unordered_map<std::string, std::string> params)
+pimParamsHBMDram::pimParamsHBMDram(std::map<std::string, std::string> params)
 {
   try {
     m_protocol = pimUtils::getParam(params, "protocol");

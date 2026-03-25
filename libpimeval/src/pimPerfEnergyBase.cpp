@@ -140,8 +140,8 @@ pimPerfEnergyBase::getPerfEnergyForBytesTransfer(PimCmdEnum cmdType, uint64_t nu
 pimeval::perfEnergy
 pimPerfEnergyBase::getPerfEnergyForFunc1(PimCmdEnum cmdType, const pimObjInfo& objSrc, const pimObjInfo& objDest) const
 {
-  double msRuntime = 1e10;
-  double mjEnergy = 999999999.9;
+  double msRuntime = 0.0;
+  double mjEnergy = 0.0;
   double msRead = 0.0;
   double msWrite = 0.0;
   double msCompute = 0.0;
@@ -153,8 +153,8 @@ pimPerfEnergyBase::getPerfEnergyForFunc1(PimCmdEnum cmdType, const pimObjInfo& o
 pimeval::perfEnergy
 pimPerfEnergyBase::getPerfEnergyForFunc2(PimCmdEnum cmdType, const pimObjInfo& objSrc1, const pimObjInfo& objSrc2, const pimObjInfo& objDest) const
 {
-  double msRuntime = 1e10;
-  double mjEnergy = 999999999.9;
+  double msRuntime = 0.0;
+  double mjEnergy = 0.0;
   double msRead = 0.0;
   double msWrite = 0.0;
   double msCompute = 0.0;
@@ -166,8 +166,8 @@ pimPerfEnergyBase::getPerfEnergyForFunc2(PimCmdEnum cmdType, const pimObjInfo& o
 pimeval::perfEnergy
 pimPerfEnergyBase::getPerfEnergyForReduction(PimCmdEnum cmdType, const pimObjInfo& obj, unsigned numPass) const
 {
-  double msRuntime = 1e10;
-  double mjEnergy = 999999999.9;
+  double msRuntime = 0.0;
+  double mjEnergy = 0.0;
   double msRead = 0.0;
   double msWrite = 0.0;
   double msCompute = 0.0;
@@ -179,8 +179,8 @@ pimPerfEnergyBase::getPerfEnergyForReduction(PimCmdEnum cmdType, const pimObjInf
 pimeval::perfEnergy
 pimPerfEnergyBase::getPerfEnergyForBroadcast(PimCmdEnum cmdType, const pimObjInfo& obj) const
 {
-  double msRuntime = 1e10;
-  double mjEnergy = 999999999.9;
+  double msRuntime = 0.0;
+  double mjEnergy = 0.0;
   double msRead = 0.0;
   double msWrite = 0.0;
   double msCompute = 0.0;
@@ -192,8 +192,8 @@ pimPerfEnergyBase::getPerfEnergyForBroadcast(PimCmdEnum cmdType, const pimObjInf
 pimeval::perfEnergy
 pimPerfEnergyBase::getPerfEnergyForRotate(PimCmdEnum cmdType, const pimObjInfo& obj) const
 {
-  double msRuntime = 1e10;
-  double mjEnergy = 999999999.9;
+  double msRuntime = 0.0;
+  double mjEnergy = 0.0;
   double msRead = 0.0;
   double msWrite = 0.0;
   double msCompute = 0.0;
@@ -205,8 +205,8 @@ pimPerfEnergyBase::getPerfEnergyForRotate(PimCmdEnum cmdType, const pimObjInfo& 
 pimeval::perfEnergy
 pimPerfEnergyBase::getPerfEnergyForPrefixSum(PimCmdEnum cmdType, const pimObjInfo& obj) const
 {
-  double msRuntime = 1e10;
-  double mjEnergy = 999999999.9;
+  double msRuntime = 0.0;
+  double mjEnergy = 0.0;
   double msRead = 0.0;
   double msWrite = 0.0;
   double msCompute = 0.0;
@@ -218,11 +218,58 @@ pimPerfEnergyBase::getPerfEnergyForPrefixSum(PimCmdEnum cmdType, const pimObjInf
 pimeval::perfEnergy
 pimPerfEnergyBase::getPerfEnergyForMac(PimCmdEnum cmdType, const pimObjInfo& obj) const
 {
-  double msRuntime = 1e10;
-  double mjEnergy = 999999999.9;
+  double msRuntime = 0.0;
+  double mjEnergy = 0.0;
   double msRead = 0.0;
   double msWrite = 0.0;
   double msCompute = 0.0;
   uint64_t mTotalOP = 0;
+  return pimeval::perfEnergy(msRuntime, mjEnergy, msRead, msWrite, msCompute, mTotalOP);
+}
+
+pimeval::perfEnergy
+pimPerfEnergyBase::getPerfEnergyForRowBitOp(PimCmdEnum cmdType, const pimObjInfo& obj) const
+{
+  double msRuntime = 0.0;
+  double mjEnergy = 0.0;
+  double msRead = 0.0;
+  double msWrite = 0.0;
+  double msCompute = 0.0;
+  uint64_t mTotalOP = 0;
+
+  double tCCD = m_tCCD_S * m_tCK;
+  double tREAD = m_tR;
+  double tWRITE = m_tW;
+  double eREAD = m_eR;
+  double eWRITE = m_eW;
+
+  unsigned numCores = obj.getRegions().size();
+
+  switch (cmdType) {
+    case PimCmdEnum::ROW_R:
+      msRuntime = tREAD;
+      mjEnergy = eREAD * numCores;
+      msRead = tREAD;
+      break;
+    case PimCmdEnum::ROW_W:
+      msRuntime = tWRITE;
+      mjEnergy = eWRITE * numCores;
+      msWrite = tWRITE;
+      break;
+    case PimCmdEnum::ROW_AP:
+    case PimCmdEnum::ROW_AAP:
+      msRuntime = tCCD;
+      mjEnergy = (eREAD + eWRITE) * numCores;
+      msCompute = tCCD;
+      break;
+    default:
+      if (pimCmd::getName(cmdType, "").find("rreg.") == 0) {
+        msRuntime = tCCD;
+        mjEnergy = 0.001 * numCores;
+        msCompute = tCCD;
+      }
+      break;
+  }
+
   return pimeval::perfEnergy(msRuntime, mjEnergy, msRead, msWrite, msCompute, mTotalOP);
 }

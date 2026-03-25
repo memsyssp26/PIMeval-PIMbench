@@ -12,9 +12,8 @@ HEADERS = $(wildcard *.h)
 
 debug perf dramsim3_integ: $(EXEC)
 
-$(EXEC): $(SRCS) $(HEADERS) $(DEPS)
+$(EXEC): $(SRCS) $(HEADERS) $(LIBPIMEVAL_A)
 	$(CXX) $(SRCS) $(CXXFLAGS) -o $@
 
 clean:
 	rm -rf $(EXEC) *.dSYM
-

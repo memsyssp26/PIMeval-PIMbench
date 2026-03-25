@@ -74,6 +74,8 @@ public:
   virtual pimeval::perfEnergy getPerfEnergyForPrefixSum(PimCmdEnum cmdType, const pimObjInfo& obj) const;
   virtual pimeval::perfEnergy getPerfEnergyForMac(PimCmdEnum cmdType, const pimObjInfo& obj) const;
 
+  virtual pimeval::perfEnergy getPerfEnergyForRowBitOp(PimCmdEnum cmdType, const pimObjInfo& obj) const;
+
 protected:
   PimDeviceEnum m_simTarget;
   unsigned m_numRanks;

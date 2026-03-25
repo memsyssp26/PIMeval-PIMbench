@@ -9,7 +9,7 @@
 
 
 //! @brief  Pim CMD: PIM API Fusion
-bool
+PimStatus
 pimCmdFuse::execute()
 {
   if (m_debugCmds) {
@@ -18,25 +18,22 @@ pimCmdFuse::execute()
 
   // Functional simulation
   // TODO: skip original updateStats
-  bool success = true;
   for (auto& api : m_prog.m_apis) {
     PimStatus status = api();
     if (status != PIM_OK) {
-      success = false;
-      break;
+      return status;
     }
   }
 
   // Analyze API fusion opportunities
-  success = success && updateStats();
-  return success;
+  return updateStats();
 }
 
 //! @brief  Pim CMD: PIM API Fusion - update stats
-bool
+PimStatus
 pimCmdFuse::updateStats() const
 {
   // TODO: Parse m_prog and update stats
-  return true;
+  return PIM_OK;
 }
 

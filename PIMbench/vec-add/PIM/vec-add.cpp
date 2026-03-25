@@ -112,6 +112,8 @@ void vectorAddition(uint64_t vectorLength, std::vector<int> &src1, std::vector<i
 
 int main(int argc, char **argv)
 {
+  // Parse --pim-* args first so they're stripped before getopt sees them
+  pimInit(&argc, &argv);
   struct Params params = getInputParams(argc, argv);
   std::cout << "Running Vector Add on PIM for vector length: " << params.vectorLength << "\n\n";
   std::vector<int> src1(params.vectorLength, 1), src2(params.vectorLength, 2), dst;

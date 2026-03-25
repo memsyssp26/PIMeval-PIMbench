@@ -3,6 +3,7 @@
 
 #include <fstream>
 #include <functional>
+#include <queue>
 #include <random>
 #include <string>
 #include "memory_system.h"
@@ -17,6 +18,7 @@ class CPU {
               std::bind(&CPU::ReadCallBack, this, std::placeholders::_1),
               std::bind(&CPU::WriteCallBack, this, std::placeholders::_1)),
           clk_(0) {}
+    virtual ~CPU() {}
     virtual void ClockTick() = 0;
     void ReadCallBack(uint64_t addr) { return; }
     void WriteCallBack(uint64_t addr) { return; }
@@ -65,6 +67,25 @@ class TraceBasedCPU : public CPU {
     std::ifstream trace_file_;
     Transaction trans_;
     bool get_next_ = true;
+};
+
+class PIMCPU : public CPU {
+   public:
+    using CPU::CPU;
+    void ClockTick() override;
+    void runAllPendingReq();
+    void addRequest(uint64_t addr, bool isWrite) {
+        pendingReq.push(Transaction(addr, isWrite));
+    }
+    uint64_t getClock() { return clk_; }
+    MemorySystem* getMemorySystem() { return &memory_system_; }
+    double GetTCK() { return memory_system_.GetTCK(); }
+
+   private:
+    std::queue<Transaction> pendingReq;
+    Transaction trans_;
+    bool get_next_ = true;
+    uint64_t maxTransaction = -1;
 };
 
 }  // namespace dramsim3

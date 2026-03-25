@@ -15,7 +15,25 @@
 //! @brief  PIM API return status
 enum PimStatus {
   PIM_ERROR = 0,
-  PIM_OK,
+  PIM_OK = 1,
+  PIM_ERR_UNINITIALIZED = 2,
+  PIM_ERR_ALREADY_INITIALIZED = 3,
+  PIM_ERR_INVALID_ARG = 4,
+  PIM_ERR_OUT_OF_MEM = 5,
+  PIM_ERR_DEVICE_NOT_FOUND = 6,
+  PIM_ERR_NOT_SUPPORTED = 7,
+  PIM_ERR_CONFIG_NOT_FOUND = 8,
+  PIM_ERR_CONFIG_INVALID = 9,
+  PIM_ERR_OBJ_NOT_FOUND = 10,
+  PIM_ERR_OBJ_ALREADY_EXISTS = 11,
+  PIM_ERR_OBJ_INVALID = 12,
+  PIM_ERR_ECC_UNCORRECTABLE = 13,
+  PIM_ERR_ECC_CORRECTED = 14,
+  PIM_ERR_LAYOUT_MISMATCH = 15,
+  PIM_ERR_CORE_NOT_FOUND = 16,
+  PIM_ERR_CORE_BUSY = 17,
+  PIM_ERR_CORE_OOM = 18,
+  PIM_ERR_UNSPECIFIED = 99
 };
 
 //! @brief  PIM device types
@@ -115,6 +133,7 @@ void pimEndTimer();
 void pimShowStats();
 void pimResetStats();
 bool pimIsAnalysisMode();
+PimStatus pimInit(int* argc, char*** argv);
 
 // Device creation and deletion
 /**

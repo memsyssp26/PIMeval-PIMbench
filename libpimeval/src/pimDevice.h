@@ -45,6 +45,11 @@ public:
   virtual bool isVLayoutDevice() const = 0;
   virtual bool isHLayoutDevice() const = 0;
   virtual bool isHybridLayoutDevice() const { return false; }
+  PimDataLayout getDeviceDataLayout() const {
+    if (isVLayoutDevice()) return PimDataLayout::V;
+    if (isHLayoutDevice()) return PimDataLayout::H;
+    return PimDataLayout::UNKNOWN;
+  }
 
   // Virtual initialization (Subclasses implement their own aggregation logic)
   virtual bool init() = 0;
@@ -59,22 +64,26 @@ public:
   PimObjId pimAlloc(PimAllocEnum allocType, uint64_t numElements, PimDataType dataType);
   PimObjId pimAllocAssociated(PimObjId assocId, PimDataType dataType);
   PimObjId pimAllocBuffer(uint32_t numElements, PimDataType dataType);
-  bool pimFree(PimObjId obj);
-  bool pimInjectError(PimObjId obj, uint64_t elemIdx, unsigned bitIdx);
-  bool pimInjectBurstError(PimObjId obj, uint64_t elemIdx, unsigned bitIdx, unsigned length);
+  PimStatus pimFree(PimObjId obj);
+  PimStatus pimInjectError(PimObjId obj, uint64_t elemIdx, unsigned bitIdx);
+  PimStatus pimInjectBurstError(PimObjId obj, uint64_t elemIdx, unsigned bitIdx, unsigned length);
   PimObjId pimCreateRangedRef(PimObjId refId, uint64_t idxBegin, uint64_t idxEnd);
   PimObjId pimCreateDualContactRef(PimObjId refId);
 
-  bool pimCopyMainToDevice(void* src, PimObjId dest, uint64_t idxBegin = 0, uint64_t idxEnd = 0);
-  bool pimCopyDeviceToMain(PimObjId src, void* dest, uint64_t idxBegin = 0, uint64_t idxEnd = 0);
-  bool pimCopyMainToDeviceWithType(PimCopyEnum copyType, void* src, PimObjId dest, uint64_t idxBegin = 0, uint64_t idxEnd = 0);
-  bool pimCopyDeviceToMainWithType(PimCopyEnum copyType, PimObjId src, void* dest, uint64_t idxBegin = 0, uint64_t idxEnd = 0);
-  bool pimCopyDeviceToDevice(PimObjId src, PimObjId dest, uint64_t idxBegin = 0, uint64_t idxEnd = 0);
+  PimStatus pimCopyMainToDevice(void* src, PimObjId dest, uint64_t idxBegin = 0, uint64_t idxEnd = 0);
+  PimStatus pimCopyDeviceToMain(PimObjId src, void* dest, uint64_t idxBegin = 0, uint64_t idxEnd = 0);
+  PimStatus pimCopyMainToDeviceWithType(PimCopyEnum copyType, void* src, PimObjId dest, uint64_t idxBegin = 0, uint64_t idxEnd = 0);
+  PimStatus pimCopyDeviceToMainWithType(PimCopyEnum copyType, PimObjId src, void* dest, uint64_t idxBegin = 0, uint64_t idxEnd = 0);
+  PimStatus pimCopyDeviceToDevice(PimObjId src, PimObjId dest, uint64_t idxBegin = 0, uint64_t idxEnd = 0);
+
+  // Bit-level data access for synchronization
+  PimStatus readBitMappedData(PimObjId objId, uint64_t elemIdx, uint64_t& bits);
+  PimStatus writeBitMappedData(PimObjId objId, uint64_t elemIdx, uint64_t bits);
 
   pimResMgr* getResMgr() { return m_resMgr.get(); }
   pimPerfEnergyBase* getPerfEnergyModel() { return m_perfEnergyModel.get(); }
   pimCore& getCore(PimCoreId coreId) { return m_cores[coreId]; }
-  bool executeCmd(std::unique_ptr<pimCmd> cmd);
+  PimStatus executeCmd(std::unique_ptr<pimCmd> cmd);
 
 protected:
   // Helpers for subclasses

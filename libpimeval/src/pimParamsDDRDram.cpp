@@ -81,7 +81,7 @@ pimParamsDDRDram::pimParamsDDRDram()
 }
 
 //! @brief  pimParamsDram ctor with a config file
-pimParamsDDRDram::pimParamsDDRDram(std::unordered_map<std::string, std::string> params)
+pimParamsDDRDram::pimParamsDDRDram(std::map<std::string, std::string> params)
 {
   try {
     m_protocol = pimUtils::getParam(params, "protocol");

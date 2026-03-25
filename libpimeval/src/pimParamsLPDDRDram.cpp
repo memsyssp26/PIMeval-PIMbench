@@ -83,7 +83,7 @@ pimParamsLPDDRDram::pimParamsLPDDRDram()
 }
 
 //! @brief  pimParamsLPDDRDram ctor with a config file
-pimParamsLPDDRDram::pimParamsLPDDRDram(std::unordered_map<std::string, std::string> params)
+pimParamsLPDDRDram::pimParamsLPDDRDram(std::map<std::string, std::string> params)
 {
   try {
     m_protocol = pimUtils::getParam(params, "protocol");

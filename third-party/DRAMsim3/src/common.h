@@ -120,6 +120,8 @@ struct Transaction {
     uint64_t added_cycle;
     uint64_t complete_cycle;
     bool is_write;
+    bool is_PIM;
+    Address pim_address;
 
     friend std::ostream& operator<<(std::ostream& os, const Transaction& trans);
     friend std::istream& operator>>(std::istream& is, Transaction& trans);

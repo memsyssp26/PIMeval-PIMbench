@@ -13,7 +13,7 @@ HEADERS := $(wildcard *.h)
 debug perf dramsim3_integ: $(EXEC)
 
 $(EXEC): $(SRCS) $(DEPS) $(HEADERS)
-	$(CXX) $(SRCS) $(CXXFLAGS) -o $@
+	$(CXX) $(SRCS) $(CXXFLAGS) -I$(PROJ_ROOT)/libpimeval/src -o $@
 
 clean:
 	rm -rf $(EXEC) *.dSYM

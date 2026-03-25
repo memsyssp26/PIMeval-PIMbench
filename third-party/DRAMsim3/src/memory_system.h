@@ -26,6 +26,8 @@ class MemorySystem {
     int GetQueueSize() const;
     void PrintStats() const;
     void ResetStats();
+    BaseDRAMSystem* getBaseDRAMSystem() {return dram_system_;}
+    Config *getConfig() {return config_;}
 
     bool WillAcceptTransaction(uint64_t hex_addr, bool is_write) const;
     bool AddTransaction(uint64_t hex_addr, bool is_write);

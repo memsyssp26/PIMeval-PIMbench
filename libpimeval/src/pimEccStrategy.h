@@ -35,6 +35,31 @@ public:
     virtual std::vector<bool> decode(const std::vector<bool>& encoded, int& status) const = 0;
 
     /**
+     * @brief Encode a uint64_t value (convenience for dataWidth <= 64).
+     */
+    virtual uint64_t encode(uint64_t data, unsigned dataWidth) const {
+      std::vector<bool> v(dataWidth);
+      for (unsigned i = 0; i < dataWidth; ++i) v[i] = (data >> i) & 1;
+      std::vector<bool> enc = encode(v);
+      uint64_t res = 0;
+      for (unsigned i = 0; i < enc.size() && i < 64; ++i) if (enc[i]) res |= (1ULL << i);
+      return res;
+    }
+
+    /**
+     * @brief Decode a uint64_t value (convenience for encodedWidth <= 64).
+     */
+    virtual uint64_t decode(uint64_t encoded, unsigned dataWidth, int& status) const {
+      unsigned encWidth = getTotalBits(dataWidth);
+      std::vector<bool> v(encWidth);
+      for (unsigned i = 0; i < encWidth; ++i) v[i] = (encoded >> i) & 1;
+      std::vector<bool> dec = decode(v, status);
+      uint64_t res = 0;
+      for (unsigned i = 0; i < dec.size() && i < 64; ++i) if (dec[i]) res |= (1ULL << i);
+      return res;
+    }
+
+    /**
      * @brief Get the name of the ECC scheme.
      */
     virtual std::string getName() const = 0;
@@ -52,7 +77,8 @@ public:
  */
 class pimEccFactory {
 public:
-    static std::unique_ptr<pimEccStrategy> create(const std::string& type, unsigned layers);
+    static std::unique_ptr<pimEccStrategy> create(const std::string& type, unsigned layers,
+                                                   double latencyOverride = 0.0, double energyOverride = 0.0);
 };
 
 #endif

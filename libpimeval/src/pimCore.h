@@ -145,6 +145,142 @@ public:
     return val;
   }
 
+  //! @brief  Read row into sense amplifier
+  void readRowToSa(unsigned rowIdx) {
+    if (m_rows[rowIdx].empty()) {
+      m_senseAmpCol.assign(m_numCols, false);
+    } else {
+      for (unsigned i = 0; i < m_numCols; ++i) {
+        m_senseAmpCol[i] = getBit(rowIdx, i);
+      }
+    }
+  }
+  //! @brief  Write sense amplifier to row
+  void writeSaToRow(unsigned rowIdx) {
+    if (m_rows[rowIdx].empty()) {
+      m_rows[rowIdx].resize(m_bytesPerRow, 0);
+    }
+    for (unsigned i = 0; i < m_numCols; ++i) {
+      setBit(rowIdx, i, m_senseAmpCol[i]);
+    }
+  }
+  //! @brief  Triple-row activation (majority function)
+  void tra(unsigned r1, unsigned r2, unsigned r3) {
+    for (unsigned i = 0; i < m_numCols; ++i) {
+      bool b1 = getBit(r1, i);
+      bool b2 = getBit(r2, i);
+      bool b3 = getBit(r3, i);
+      m_senseAmpCol[i] = (b1 && b2) || (b1 && b3) || (b2 && b3);
+    }
+  }
+  //! @brief  Analog activation-to-activation propagation
+  void aap(const std::vector<unsigned>& srcRows, const std::vector<unsigned>& destRows) {
+    // Basic functional model: destRows[i] = majority(srcRows)
+    for (unsigned i = 0; i < m_numCols; ++i) {
+      unsigned count = 0;
+      for (unsigned r : srcRows) if (getBit(r, i)) count++;
+      bool result = (count > srcRows.size() / 2);
+      for (unsigned r : destRows) setBit(r, i, result);
+    }
+  }
+  //! @brief  Row register operations
+  void rreg_mov(PimRowReg src, PimRowReg dest) {
+    if (src == PIM_RREG_SA) m_rowRegs[dest] = m_senseAmpCol;
+    else if (dest == PIM_RREG_SA) m_senseAmpCol = m_rowRegs[src];
+    else m_rowRegs[dest] = m_rowRegs[src];
+  }
+  void rreg_set(PimRowReg dest, bool val) {
+    if (dest == PIM_RREG_SA) m_senseAmpCol.assign(m_numCols, val);
+    else m_rowRegs[dest].assign(m_numCols, val);
+  }
+  void rreg_not(PimRowReg src, PimRowReg dest) {
+    const std::vector<bool>& s = (src == PIM_RREG_SA) ? m_senseAmpCol : m_rowRegs[src];
+    std::vector<bool> d(m_numCols);
+    for (unsigned i = 0; i < m_numCols; ++i) d[i] = !s[i];
+    if (dest == PIM_RREG_SA) m_senseAmpCol = d;
+    else m_rowRegs[dest] = d;
+  }
+  void rreg_and(PimRowReg s1, PimRowReg s2, PimRowReg dest) {
+    const std::vector<bool>& v1 = (s1 == PIM_RREG_SA) ? m_senseAmpCol : m_rowRegs[s1];
+    const std::vector<bool>& v2 = (s2 == PIM_RREG_SA) ? m_senseAmpCol : m_rowRegs[s2];
+    std::vector<bool> d(m_numCols);
+    for (unsigned i = 0; i < m_numCols; ++i) d[i] = v1[i] && v2[i];
+    if (dest == PIM_RREG_SA) m_senseAmpCol = d;
+    else m_rowRegs[dest] = d;
+  }
+  void rreg_or(PimRowReg s1, PimRowReg s2, PimRowReg dest) {
+    const std::vector<bool>& v1 = (s1 == PIM_RREG_SA) ? m_senseAmpCol : m_rowRegs[s1];
+    const std::vector<bool>& v2 = (s2 == PIM_RREG_SA) ? m_senseAmpCol : m_rowRegs[s2];
+    std::vector<bool> d(m_numCols);
+    for (unsigned i = 0; i < m_numCols; ++i) d[i] = v1[i] || v2[i];
+    if (dest == PIM_RREG_SA) m_senseAmpCol = d;
+    else m_rowRegs[dest] = d;
+  }
+  void rreg_nand(PimRowReg s1, PimRowReg s2, PimRowReg dest) {
+    const std::vector<bool>& v1 = (s1 == PIM_RREG_SA) ? m_senseAmpCol : m_rowRegs[s1];
+    const std::vector<bool>& v2 = (s2 == PIM_RREG_SA) ? m_senseAmpCol : m_rowRegs[s2];
+    std::vector<bool> d(m_numCols);
+    for (unsigned i = 0; i < m_numCols; ++i) d[i] = !(v1[i] && v2[i]);
+    if (dest == PIM_RREG_SA) m_senseAmpCol = d;
+    else m_rowRegs[dest] = d;
+  }
+  void rreg_nor(PimRowReg s1, PimRowReg s2, PimRowReg dest) {
+    const std::vector<bool>& v1 = (s1 == PIM_RREG_SA) ? m_senseAmpCol : m_rowRegs[s1];
+    const std::vector<bool>& v2 = (s2 == PIM_RREG_SA) ? m_senseAmpCol : m_rowRegs[s2];
+    std::vector<bool> d(m_numCols);
+    for (unsigned i = 0; i < m_numCols; ++i) d[i] = !(v1[i] || v2[i]);
+    if (dest == PIM_RREG_SA) m_senseAmpCol = d;
+    else m_rowRegs[dest] = d;
+  }
+  void rreg_xor(PimRowReg s1, PimRowReg s2, PimRowReg dest) {
+    const std::vector<bool>& v1 = (s1 == PIM_RREG_SA) ? m_senseAmpCol : m_rowRegs[s1];
+    const std::vector<bool>& v2 = (s2 == PIM_RREG_SA) ? m_senseAmpCol : m_rowRegs[s2];
+    std::vector<bool> d(m_numCols);
+    for (unsigned i = 0; i < m_numCols; ++i) d[i] = v1[i] ^ v2[i];
+    if (dest == PIM_RREG_SA) m_senseAmpCol = d;
+    else m_rowRegs[dest] = d;
+  }
+  void rreg_xnor(PimRowReg s1, PimRowReg s2, PimRowReg dest) {
+    const std::vector<bool>& v1 = (s1 == PIM_RREG_SA) ? m_senseAmpCol : m_rowRegs[s1];
+    const std::vector<bool>& v2 = (s2 == PIM_RREG_SA) ? m_senseAmpCol : m_rowRegs[s2];
+    std::vector<bool> d(m_numCols);
+    for (unsigned i = 0; i < m_numCols; ++i) d[i] = !(v1[i] ^ v2[i]);
+    if (dest == PIM_RREG_SA) m_senseAmpCol = d;
+    else m_rowRegs[dest] = d;
+  }
+  void rreg_maj(PimRowReg s1, PimRowReg s2, PimRowReg s3, PimRowReg dest) {
+    const std::vector<bool>& v1 = (s1 == PIM_RREG_SA) ? m_senseAmpCol : m_rowRegs[s1];
+    const std::vector<bool>& v2 = (s2 == PIM_RREG_SA) ? m_senseAmpCol : m_rowRegs[s2];
+    const std::vector<bool>& v3 = (s3 == PIM_RREG_SA) ? m_senseAmpCol : m_rowRegs[s3];
+    std::vector<bool> d(m_numCols);
+    for (unsigned i = 0; i < m_numCols; ++i) d[i] = (v1[i] && v2[i]) || (v1[i] && v3[i]) || (v2[i] && v3[i]);
+    if (dest == PIM_RREG_SA) m_senseAmpCol = d;
+    else m_rowRegs[dest] = d;
+  }
+  void rreg_sel(PimRowReg sc, PimRowReg s1, PimRowReg s2, PimRowReg dest) {
+    const std::vector<bool>& vc = (sc == PIM_RREG_SA) ? m_senseAmpCol : m_rowRegs[sc];
+    const std::vector<bool>& v1 = (s1 == PIM_RREG_SA) ? m_senseAmpCol : m_rowRegs[s1];
+    const std::vector<bool>& v2 = (s2 == PIM_RREG_SA) ? m_senseAmpCol : m_rowRegs[s2];
+    std::vector<bool> d(m_numCols);
+    for (unsigned i = 0; i < m_numCols; ++i) d[i] = vc[i] ? v1[i] : v2[i];
+    if (dest == PIM_RREG_SA) m_senseAmpCol = d;
+    else m_rowRegs[dest] = d;
+  }
+  void rreg_rotate_r(PimRowReg r) {
+    std::vector<bool>& v = (r == PIM_RREG_SA) ? m_senseAmpCol : m_rowRegs[r];
+    if (v.empty()) return;
+    bool last = v.back();
+    for (int i = m_numCols - 1; i > 0; --i) v[i] = v[i-1];
+    v[0] = last;
+  }
+  void rreg_rotate_l(PimRowReg r) {
+    std::vector<bool>& v = (r == PIM_RREG_SA) ? m_senseAmpCol : m_rowRegs[r];
+    if (v.empty()) return;
+    bool first = v[0];
+    for (unsigned i = 0; i < m_numCols - 1; ++i) v[i] = v[i+1];
+    v.back() = first;
+  }
+
 private:
   PimCoreId m_coreId;
   unsigned m_numRows;

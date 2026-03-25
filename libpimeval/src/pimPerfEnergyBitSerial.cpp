@@ -512,3 +512,10 @@ pimPerfEnergyBitSerial::getPerfEnergyForPrefixSum(PimCmdEnum cmdType, const pimO
   printf("PIM-Warning: Perf energy model not available for PIM command %s\n", pimCmd::getName(cmdType, "").c_str());
   return pimeval::perfEnergy(msRuntime, mjEnergy, msRead, msWrite, msCompute, totalOp);
 }
+
+pimeval::perfEnergy
+pimPerfEnergyBitSerial::getPerfEnergyForRowBitOp(PimCmdEnum cmdType, const pimObjInfo& obj) const
+{
+  // For bit-serial devices, micro-ops are basic DRAM ops
+  return pimPerfEnergyBase::getPerfEnergyForRowBitOp(cmdType, obj);
+}

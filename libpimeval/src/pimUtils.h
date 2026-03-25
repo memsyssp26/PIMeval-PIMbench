@@ -19,6 +19,7 @@
 #include <cctype>
 #include <locale>
 #include <unordered_map>
+#include <map>
 #include <type_traits>
 #include <cstring>
 #include <cstdint>
@@ -56,7 +57,10 @@ namespace pimUtils
   bool isSigned(PimDataType dataType);
   bool isUnsigned(PimDataType dataType);
   bool isFP(PimDataType dataType);
+  float castBitsToFloat(PimDataType dataType, uint64_t bits);
+  uint64_t castFloatToBits(PimDataType dataType, float val);
   std::string pimProtocolEnumToStr(PimDeviceProtocolEnum protocol);
+  PimDeviceProtocolEnum strToPimProtocolEnum(const std::string& protocolStr);
   PimDataLayout getDeviceDataLayout(PimDeviceEnum deviceType);
 
   // Convert raw bits into sign-extended bits based on PIM data type.
@@ -100,78 +104,58 @@ namespace pimUtils
   std::string& rtrim(std::string& s);
   std::string& trim(std::string& s);
   bool readFileContent(const char* fileName, std::string& fileContent);
-  std::string getParam(const std::unordered_map<std::string, std::string>& params, const std::string& key);
-  std::string getOptionalParam(const std::unordered_map<std::string, std::string>& params, const std::string& key, bool& returnStatus);
+  std::string getParam(const std::map<std::string, std::string>& params, const std::string& key);
+  std::string getOptionalParam(const std::map<std::string, std::string>& params, const std::string& key, bool& returnStatus);
   std::string removeAfterSemicolon(const std::string &input);
 
   std::string getDirectoryPath(const std::string& filePath);
   bool getEnvVar(const std::string &varName, std::string &varValue);
   bool convertStringToUnsigned(const std::string& str, unsigned& retVal);
-  std::unordered_map<std::string, std::string> readParamsFromConfigFile(const std::string& configFilePath);
-  std::unordered_map<std::string, std::string> readParamsFromEnvVars(const std::vector<std::string>& envVarNames);
+  std::map<std::string, std::string> readParamsFromConfigFile(const std::string& configFilePath);
+  std::map<std::string, std::string> readParamsFromEnvVars(const std::vector<std::string>& envVarNames);
+/**
+ * @class threadWorker
+ * @brief A base class for parallel tasks executed by the thread pool.
+ */
+class threadWorker {
+public:
+  virtual ~threadWorker() {}
+  virtual void execute() = 0;
+};
 
-  const std::unordered_map<PimDeviceEnum, std::string> enumToStrMap = {
-      {PIM_DEVICE_NONE, "PIM_DEVICE_NONE"},
-      {PIM_FUNCTIONAL, "PIM_FUNCTIONAL"},
-      {PIM_DEVICE_BITSIMD_V, "PIM_DEVICE_BITSIMD_V"},
-      {PIM_DEVICE_BITSIMD_V_NAND, "PIM_DEVICE_BITSIMD_V_NAND"},
-      {PIM_DEVICE_BITSIMD_V_MAJ, "PIM_DEVICE_BITSIMD_V_MAJ"},
-      {PIM_DEVICE_BITSIMD_V_AP, "PIM_DEVICE_BITSIMD_V_AP"},
-      {PIM_DEVICE_DRISA_NOR, "PIM_DEVICE_DRISA_NOR"},
-      {PIM_DEVICE_DRISA_MIXED, "PIM_DEVICE_DRISA_MIXED"},
-      {PIM_DEVICE_SIMDRAM, "PIM_DEVICE_SIMDRAM"},
-      {PIM_DEVICE_BITSIMD_H, "PIM_DEVICE_BITSIMD_H"},
-      {PIM_DEVICE_FULCRUM, "PIM_DEVICE_FULCRUM"},
-      {PIM_DEVICE_BANK_LEVEL, "PIM_DEVICE_BANK_LEVEL"},
-      {PIM_DEVICE_AQUABOLT, "PIM_DEVICE_AQUABOLT"},
-      {PIM_DEVICE_AIM, "PIM_DEVICE_AIM"}
-  };
-
-  const std::unordered_map<std::string, PimDeviceEnum> strToEnumMap = {
-      {"PIM_DEVICE_NONE", PIM_DEVICE_NONE},
-      {"PIM_FUNCTIONAL", PIM_FUNCTIONAL},
-      {"PIM_DEVICE_BITSIMD_V", PIM_DEVICE_BITSIMD_V},
-      {"PIM_DEVICE_BITSIMD_V_NAND", PIM_DEVICE_BITSIMD_V_NAND},
-      {"PIM_DEVICE_BITSIMD_V_MAJ", PIM_DEVICE_BITSIMD_V_MAJ},
-      {"PIM_DEVICE_BITSIMD_V_AP", PIM_DEVICE_BITSIMD_V_AP},
-      {"PIM_DEVICE_DRISA_NOR", PIM_DEVICE_DRISA_NOR},
-      {"PIM_DEVICE_DRISA_MIXED", PIM_DEVICE_DRISA_MIXED},
-      {"PIM_DEVICE_SIMDRAM", PIM_DEVICE_SIMDRAM},
-      {"PIM_DEVICE_BITSIMD_H", PIM_DEVICE_BITSIMD_H},
-      {"PIM_DEVICE_FULCRUM", PIM_DEVICE_FULCRUM},
-      {"PIM_DEVICE_BANK_LEVEL", PIM_DEVICE_BANK_LEVEL},
-      {"PIM_DEVICE_AQUABOLT", PIM_DEVICE_AQUABOLT},
-      {"PIM_DEVICE_AIM", PIM_DEVICE_AIM}
-  };
-
-  //! @class  threadWorker
-  //! @brief  Thread worker base class
-  class threadWorker {
-  public:
-    threadWorker() {}
-    virtual ~threadWorker() {}
-    virtual void execute() = 0;
-  };
-
-  //! @class  threadPool
-  //! @brief  Thread pool that runs multiple workers in threads
+/**
+ * @class threadPool
+...
+   * @brief A simple thread pool for managing parallel execution of tasks.
+   */
   class threadPool {
   public:
     threadPool(size_t numThreads);
     ~threadPool();
-    void doWork(const std::vector<pimUtils::threadWorker*>& workers);
-  private:
-    void workerThread();
 
-    std::vector<std::thread> m_threads;
-    std::queue<threadWorker*> m_workers;
-    std::mutex m_mutex;
-    std::condition_variable m_cond;
-    bool m_terminate;
-    std::atomic<size_t> m_workersRemaining;
+    template<class F, class... Args>
+    void enqueue(F&& f, Args&&... args);
+
+    void wait();
+
+  private:
+    std::vector<std::thread> m_workers;
+    std::queue<std::function<void()>> m_tasks;
+    std::mutex m_queueMutex;
+    std::condition_variable m_condition;
+    std::condition_variable m_waitCondition;
+    size_t m_busyThreads;
+    bool m_stop;
   };
 
+  template<class F, class... Args>
+  void threadPool::enqueue(F&& f, Args&&... args) {
+    {
+      std::unique_lock<std::mutex> lock(m_queueMutex);
+      m_tasks.emplace(std::bind(std::forward<F>(f), std::forward<Args>(args)...));
+    }
+    m_condition.notify_one();
+  }
 }
 
 #endif
-

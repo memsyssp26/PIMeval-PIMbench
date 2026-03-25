@@ -3,29 +3,63 @@
 # This file is licensed under the MIT License.
 # See the LICENSE file in the root of this repository for more details.
 
-LIBDIR := libpimeval
+# Directories
+LIBDIR       := libpimeval
 BITSERIALDIR := bit-serial
-APPDIR := PIMbench
-TESTDIR := misc-bench tests
-ALLDIRS := $(LIBDIR) $(BITSERIALDIR) $(APPDIR) $(TESTDIR)
+APPDIR       := PIMbench
+MISCDIR      := misc-bench
+TESTDIR      := tests
+THIRD_PARTY  := third-party/DRAMsim3
 
-# Handle dependency between lib and apps to support make -j
-DEP_LIBPIMEVAL := $(LIBDIR)/lib/libpimeval.a
+# All standard build directories
+SUBDIRS := $(LIBDIR) $(BITSERIALDIR) $(APPDIR) $(MISCDIR) $(TESTDIR)
 
-.PHONY: debug perf dramsim3_integ clean $(ALLDIRS)
-.DEFAULT_GOAL := perf
+# Artifacts
+LIBPIMEVAL_A := $(LIBDIR)/lib/libpimeval.a
+DRAMSIM3_A   := $(THIRD_PARTY)/build/libdramsim3.a
 
-debug: $(ALLDIRS)
-	@echo "\nINFO: Built PIMeval Simulator with target = debug\n"
+# Configuration Overrides
+PIM_SIM_TARGET    ?= PIM_DEVICE_NONE
+USE_OPENMP        ?= 0
+COMPILE_WITH_JPEG ?= 0
+DRAMSIM3_PATH     ?= $(shell pwd)/$(THIRD_PARTY)
 
-perf: $(ALLDIRS)
-	@echo "\nINFO: Built PIMeval Simulator with target = perf\n"
+# Exports for sub-makes
+export PIM_SIM_TARGET USE_OPENMP COMPILE_WITH_JPEG DRAMSIM3_PATH
 
-dramsim3_integ: $(ALLDIRS)
-	@echo "\nINFO: Built PIMeval Simulator with target = dramsim3_integ\n"
+.PHONY: all debug perf dramsim3 clean check docs third-party $(SUBDIRS)
 
-clean: $(ALLDIRS)
+# Default goal: high-performance functional simulation
+all: perf
 
+perf: $(SUBDIRS)
+	@echo "\n>>> Built PIMeval (Target: PERF) <<<\n"
+
+debug: $(SUBDIRS)
+	@echo "\n>>> Built PIMeval (Target: DEBUG) <<<\n"
+
+# Integrated Cycle-Accurate Mode
+dramsim3: third-party dramsim3_integ
+
+dramsim3_integ: $(SUBDIRS)
+	@echo "\n>>> Built PIMeval (Target: DRAMSIM3_INTEG) <<<\n"
+
+# Third-party dependencies
+third-party: $(DRAMSIM3_A)
+
+$(DRAMSIM3_A):
+	@echo ">>> Building DRAMsim3 dependency <<<"
+	@mkdir -p $(THIRD_PARTY)/build
+	@cd $(THIRD_PARTY)/build && cmake .. && $(MAKE) -j$(sysctl -n hw.ncpu || nproc)
+
+# Directory Orchestration
+$(SUBDIRS):
+	@$(MAKE) -C $@ $(filter-out all dramsim3,$(MAKECMDGOALS))
+
+# Specific Dependencies
+$(BITSERIALDIR) $(APPDIR) $(MISCDIR) $(TESTDIR): $(LIBDIR)
+
+# Verification
 check:
 	@$(MAKE) perf
 	@echo ">>> Verifying PIMeval Build <<<"
@@ -35,22 +69,16 @@ check:
 	@cd PIMbench/vec-add/PIM && ./vec-add.out > /dev/null && echo "  vec-add: PASSED"
 	@echo "\n>>> All Checks Passed! <<<"
 
+# Documentation
 docs:
 	@echo ">>> Generating Doxygen Documentation <<<"
 	@doxygen Doxyfile || echo "Error: doxygen not found. Please install it."
 
-# Run make with PIM_SIM_TARGET=<PimDeviceEnum> to override default simulation target
-PIM_SIM_TARGET ?= PIM_DEVICE_NONE
+# Global Cleanup
+clean:
+	@for dir in $(SUBDIRS); do $(MAKE) -C $$dir clean; done
+	@echo ">>> Project Cleaned <<<"
 
-# Run make with USE_OPENMP=1 to enable OpenMP in some apps
-USE_OPENMP ?= 0
-
-# Run make with COMPILE_WITH_JPEG=0 to disable compilation with JPEG. JPEG compilation is needed for VGG apps.
-COMPILE_WITH_JPEG ?= 0
-
-$(DEP_LIBPIMEVAL) $(LIBDIR):
-	$(MAKE) -C $(LIBDIR) $(MAKECMDGOALS) PIM_SIM_TARGET=$(PIM_SIM_TARGET) USE_OPENMP=$(USE_OPENMP) COMPILE_WITH_JPEG=$(COMPILE_WITH_JPEG)
-
-$(BITSERIALDIR) $(APPDIR) $(TESTDIR): $(DEP_LIBPIMEVAL)
-	$(MAKE) -C $@ $(MAKECMDGOALS) PIM_SIM_TARGET=$(PIM_SIM_TARGET) USE_OPENMP=$(USE_OPENMP) COMPILE_WITH_JPEG=$(COMPILE_WITH_JPEG)
-
+clean-all: clean
+	@rm -rf $(THIRD_PARTY)/build
+	@echo ">>> All Artifacts (including third-party) Cleaned <<<"

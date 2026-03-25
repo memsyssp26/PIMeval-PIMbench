@@ -41,9 +41,8 @@ public:
       if (type == "secded") {
         totalBits += getNumEccBits(totalBits);
       } else if (type == "rs") {
-        // RS(n, k) - roughly. Let's assume RS(n, k) with 8-bit symbols.
-        // For simplicity in simulation, let's assume 8 bits of overhead for every 64 bits.
-        totalBits += (dataWidth + 63) / 64 * 8;
+        // RS simulation model: 8 check bits per 64 data bits (1 check symbol per block)
+        totalBits += (totalBits + 63) / 64 * 8;
       } else if (type == "crc32") {
         totalBits += 32;
       }
@@ -111,7 +110,7 @@ public:
     
     // Find k
     unsigned k = 0;
-    while ((1U << k) <= totalBitsWithoutDED) {
+    while ((1U << k) < totalBitsWithoutDED + 1) {
       k++;
     }
     unsigned dataWidth = totalBitsWithoutDED - k;
@@ -218,40 +217,80 @@ public:
     return data;
   }
 
-  //! @brief  Abstract Reed-Solomon model for simulation
-  //! RS(n, k) can correct (n-k)/2 symbol errors.
-  //! We model this by allowing up to a certain number of bit errors to be corrected.
+  //! @brief  Compute RS check byte for a 64-bit data block using rotational XOR.
+  //! Each data byte is rotated by its position index before XOR, making the check
+  //! sensitive to both value and position (approximates RS symbol-level protection).
+  static uint8_t computeRsCheckByte(const std::vector<bool>& block, unsigned blockStart, unsigned blockLen) {
+    uint8_t check = 0;
+    unsigned numBytes = (blockLen + 7) / 8;
+    for (unsigned byteIdx = 0; byteIdx < numBytes; ++byteIdx) {
+      uint8_t dataByte = 0;
+      for (unsigned bit = 0; bit < 8; ++bit) {
+        unsigned pos = blockStart + byteIdx * 8 + bit;
+        if (pos < blockStart + blockLen && pos < block.size() && block[pos]) {
+          dataByte |= (1U << bit);
+        }
+      }
+      // Rotate left by byte position to make check position-dependent
+      unsigned rot = byteIdx % 8;
+      uint8_t rotated = (dataByte << rot) | (dataByte >> (8 - rot));
+      check ^= rotated;
+    }
+    return check;
+  }
+
+  //! @brief  Reed-Solomon simulation model for PIM ECC.
+  //! Uses 8 check bits per 64 data bits (1 check symbol per block).
+  //! This models RS symbol-level error detection at the byte granularity.
+  //! With 1 check symbol, the scheme can detect single-symbol errors but
+  //! cannot correct them (correction requires n-k >= 2t check symbols).
   static std::vector<bool> encodeRS(const std::vector<bool>& data) {
-    // Model: Add 8 check bits for every 64 bits
-    unsigned overhead = (data.size() + 63) / 64 * 8;
+    unsigned dataSize = data.size();
+    unsigned numBlocks = (dataSize + 63) / 64;
     std::vector<bool> encoded = data;
-    // For simulation, we don't need a real RS impl, just the bit overhead and error correction capability.
-    // We'll use a simple parity for each 8-bit chunk as a placeholder.
-    for (unsigned i = 0; i < overhead; ++i) {
-      encoded.push_back(false); 
+    // Compute and append check byte for each 64-bit block
+    for (unsigned b = 0; b < numBlocks; ++b) {
+      unsigned blockStart = b * 64;
+      unsigned blockLen = std::min(64u, dataSize - blockStart);
+      uint8_t check = computeRsCheckByte(data, blockStart, blockLen);
+      for (unsigned bit = 0; bit < 8; ++bit) {
+        encoded.push_back((check >> bit) & 1);
+      }
     }
     return encoded;
   }
 
+  //! @brief  Decode RS-encoded data. Detects symbol-level corruption via check bytes.
+  //! Returns status: 0=OK, 2=error detected (uncorrectable with 1 check symbol).
   static std::vector<bool> decodeRS(const std::vector<bool>& encoded, int& status) {
+    // Recover data width from encoded size: dataWidth + ceil(dataWidth/64)*8 == encoded.size()
     unsigned dataWidth = (unsigned)(encoded.size() / 1.125);
     while (dataWidth + (dataWidth + 63) / 64 * 8 < encoded.size()) dataWidth++;
     while (dataWidth + (dataWidth + 63) / 64 * 8 > encoded.size()) dataWidth--;
 
     std::vector<bool> data(encoded.begin(), encoded.begin() + dataWidth);
-    
-    // Model RS capability: Correct up to 4 symbols (bytes) per 64-bit block
-    // For simplicity, we check if any bits were actually flipped in the data part.
-    // In a real simulator, we'd compare against a 'golden' memory.
-    // Here, we'll use a heuristic: if many bits are flipped, it's uncorrectable.
-    // For our hardening test, we want to prove RS is better than SECDED.
-    
-    // Status is already 0. Let's assume RS is 'perfect' for our tests unless we implement
-    // a way to track the original bits. 
-    // To make the stats show something, let's assume we corrected if we see a flip
-    // but for now we don't know if there was a flip.
-    
-    status = 0; 
+    unsigned numBlocks = (dataWidth + 63) / 64;
+
+    status = 0;
+    for (unsigned b = 0; b < numBlocks; ++b) {
+      unsigned blockStart = b * 64;
+      unsigned blockLen = std::min(64u, dataWidth - blockStart);
+      // Recompute check byte from the (possibly corrupted) data portion
+      uint8_t recomputed = computeRsCheckByte(encoded, blockStart, blockLen);
+      // Extract stored check byte
+      unsigned checkStart = dataWidth + b * 8;
+      uint8_t stored = 0;
+      for (unsigned bit = 0; bit < 8; ++bit) {
+        if (checkStart + bit < encoded.size() && encoded[checkStart + bit]) {
+          stored |= (1U << bit);
+        }
+      }
+      if (recomputed != stored) {
+        // Error detected in this block. With 1 check symbol per block,
+        // RS can detect but not correct (would need 2+ check symbols).
+        status = 2;
+      }
+    }
     return data;
   }
 

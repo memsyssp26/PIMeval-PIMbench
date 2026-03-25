@@ -36,6 +36,7 @@ class Controller {
     void PrintFinalStats();
     void ResetStats() { simple_stats_.Reset(); }
     std::pair<uint64_t, int> ReturnDoneTrans(uint64_t clock);
+    const CommandQueue* const getCommandQueue() const { return &cmd_queue_;}
 
     int channel_id_;
 
