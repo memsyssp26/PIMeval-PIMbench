@@ -409,9 +409,9 @@ pimCondSelectScalar(PimObjId condBool, PimObjId src1, uint64_t scalarBits, PimOb
 }
 
 PimStatus
-pimBroadcastInt(PimObjId dest, long long value) { return pimSim::get()->pimBroadcast(dest, (uint64_t)value); }
+pimBroadcastInt(PimObjId dest, int64_t value) { return pimSim::get()->pimBroadcast(dest, (uint64_t)value); }
 PimStatus
-pimBroadcastUInt(PimObjId dest, unsigned long long value) { return pimSim::get()->pimBroadcast(dest, value); }
+pimBroadcastUInt(PimObjId dest, uint64_t value) { return pimSim::get()->pimBroadcast(dest, value); }
 PimStatus
 pimBroadcastFP(PimObjId dest, float value) { return pimSim::get()->pimBroadcast(dest, value); }
 
