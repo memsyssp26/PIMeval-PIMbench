@@ -9,6 +9,7 @@
 
 #include "libpimeval.h"
 #include "pimEccStrategy.h"
+#include "pimEcc.h"
 #include "pimUtils.h"
 #include <string>
 #include <map>
@@ -176,6 +177,12 @@ public:
   double getEccLatencyNs() const { return m_eccLatencyNs.getValue(); }
   double getEccEnergyPj() const { return m_eccEnergyPj.getValue(); }
   const pimEccStrategy* getEccStrategy() const { return m_eccStrategy.get(); }
+  bool isOdeccEnabled() const { return m_odeccEnabled.getValue(); }
+  unsigned getOdeccDataWidth() const { return m_odeccDataWidth.getValue(); }
+  unsigned getOdeccParityWidth() const { return m_odeccParityWidth.getValue(); }
+  double getOdeccLatencyNs() const { return m_odeccLatencyNs.getValue(); }
+  double getOdeccEnergyPj() const { return m_odeccEnergyPj.getValue(); }
+  const pimEccOnDie* getOdeccModel() const { return m_odeccModel.get(); }
 
   enum pimDebugFlags
   {
@@ -237,6 +244,14 @@ private:
   pimConfigParam<double> m_eccLatencyNs{"ecc_latency_ns", 0.0, "ECC latency override in nanoseconds (0 = use scheme default)"};
   pimConfigParam<double> m_eccEnergyPj{"ecc_energy_pj", 0.0, "ECC energy override in picojoules (0 = use scheme default)"};
   std::unique_ptr<pimEccStrategy> m_eccStrategy;
+
+  // On-Die ECC (ODECC) - models mandatory DDR5/HBM3 internal ECC
+  pimConfigParam<bool> m_odeccEnabled{"odecc", false, "Enable on-die ECC modeling (DDR5/HBM3)"};
+  pimConfigParam<unsigned> m_odeccDataWidth{"odecc_data_width", 128, "ODECC codeword data width in bits", [](unsigned v){ return v >= 8 && (v & (v-1)) == 0; }};
+  pimConfigParam<unsigned> m_odeccParityWidth{"odecc_parity_width", 8, "ODECC parity bits per codeword", [](unsigned v){ return v > 0; }};
+  pimConfigParam<double> m_odeccLatencyNs{"odecc_latency_ns", 1.0, "ODECC decode latency in nanoseconds"};
+  pimConfigParam<double> m_odeccEnergyPj{"odecc_energy_pj", 0.5, "ODECC decode energy in picojoules"};
+  std::unique_ptr<pimEccOnDie> m_odeccModel;
 
   // Store original parameters for extension purpose
   std::map<std::string, std::string> m_cliParams;

@@ -44,6 +44,11 @@ pimSimConfig::registerParams()
   m_registry[m_eccLayers.getName()] = &m_eccLayers;
   m_registry[m_eccLatencyNs.getName()] = &m_eccLatencyNs;
   m_registry[m_eccEnergyPj.getName()] = &m_eccEnergyPj;
+  m_registry[m_odeccEnabled.getName()] = &m_odeccEnabled;
+  m_registry[m_odeccDataWidth.getName()] = &m_odeccDataWidth;
+  m_registry[m_odeccParityWidth.getName()] = &m_odeccParityWidth;
+  m_registry[m_odeccLatencyNs.getName()] = &m_odeccLatencyNs;
+  m_registry[m_odeccEnergyPj.getName()] = &m_odeccEnergyPj;
 }
 
 //! @brief  Init PIMeval simulation configuration parameters at device creation
@@ -101,6 +106,7 @@ pimSimConfig::reset()
     param->reset();
   }
   m_eccStrategy = nullptr;
+  m_odeccModel = nullptr;
   // Preserve m_cliParams across reset — they represent explicit user intent
   // from pimInit(argc, argv) and should persist across device creation cycles.
   m_envParams.clear();
@@ -151,11 +157,19 @@ pimSimConfig::show() const
 
   std::printf("PIM-Config: Number of Threads = %u\n", m_numThreads.getValue());
   std::printf("PIM-Config: Load Balanced = %s\n", m_loadBalanced.getValue() ? "1" : "0");
-  std::printf("PIM-Config: ECC Enabled = %s\n", m_eccEnabled.getValue() ? "1" : "0");
+  std::printf("PIM-Config: On-Die ECC = %s", m_odeccEnabled.getValue() ? "enabled" : "disabled");
+  if (m_odeccEnabled.getValue()) {
+    std::printf(" (%u+%u SECDED, %.1fns, %.1fpJ)",
+              m_odeccDataWidth.getValue(), m_odeccParityWidth.getValue(),
+              m_odeccLatencyNs.getValue(), m_odeccEnergyPj.getValue());
+  }
+  std::printf("\n");
+  std::printf("PIM-Config: Controller ECC = %s", m_eccEnabled.getValue() ? "enabled" : "disabled");
   if (m_eccEnabled.getValue()) {
-    std::printf("PIM-Config: ECC Type = %s, Granularity = %u, Layers = %u\n",
+    std::printf(" (%s, Granularity = %u, Layers = %u)",
               m_eccType.getValue().c_str(), m_eccGranularity.getValue(), m_eccLayers.getValue());
   }
+  std::printf("\n");
   std::printf("----------------------------------------\n");
 }
 
@@ -315,6 +329,21 @@ pimSimConfig::deriveConfig(PimDeviceEnum deviceType,
       std::printf("PIM-Error: Failed to create ECC strategy for type '%s'\n", m_eccType.getValue().c_str());
       m_eccEnabled.setValue(false);
     }
+  }
+
+  // Phase 10: On-Die ECC (ODECC) model creation
+  // ODECC defaults to enabled when controller-level ECC is enabled (DDR5/HBM3 mandate it)
+  {
+    bool hasOdecc = false;
+    getParam("odecc", "PIMEVAL_ODECC", hasOdecc);
+    if (!hasOdecc && m_eccEnabled.getValue()) {
+      m_odeccEnabled.setValue(true);
+    }
+  }
+  if (m_odeccEnabled.getValue()) {
+    m_odeccModel = std::make_unique<pimEccOnDie>(
+      m_odeccDataWidth.getValue(), m_odeccParityWidth.getValue(),
+      m_odeccLatencyNs.getValue(), m_odeccEnergyPj.getValue());
   }
 
   show();

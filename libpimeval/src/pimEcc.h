@@ -327,7 +327,7 @@ public:
     return result;
   }
 
-  // Legacy uint64_t support
+  // Legacy uint64_t support (SECDED only)
   static uint64_t encode(uint64_t data, unsigned dataWidth) {
     std::vector<bool> dataVec(dataWidth);
     for (unsigned i = 0; i < dataWidth; ++i) {
@@ -358,6 +358,49 @@ public:
     }
     return decoded;
   }
+};
+
+/**
+ * @class pimEccOnDie
+ * @brief Analytical model for on-die ECC (ODECC) as found in DDR5/HBM3.
+ *
+ * On-die ECC is mandatory in DDR5 and HBM3, operating transparently inside the
+ * DRAM die on every sense amplifier read. It uses a 128+8 SECDED code by default.
+ * Unlike controller-level ECC, ODECC fires on every DRAM row activation, including
+ * during PIM in-memory compute operations.
+ *
+ * This class is analytical only — no encode/decode is needed because ODECC is
+ * transparent to the memory controller and the simulator's functional model.
+ */
+class pimEccOnDie
+{
+public:
+  pimEccOnDie(unsigned dataWidth = 128, unsigned parityWidth = 8,
+              double latencyNs = 1.0, double energyPj = 0.5)
+    : m_dataWidth(dataWidth), m_parityWidth(parityWidth),
+      m_latencyNs(latencyNs), m_energyPj(energyPj) {}
+
+  unsigned getDataWidth() const { return m_dataWidth; }
+  unsigned getParityWidth() const { return m_parityWidth; }
+  double getLatencyNs() const { return m_latencyNs; }
+  double getEnergyPj() const { return m_energyPj; }
+
+  //! @brief Storage overhead: number of parity bits for a given number of data bits
+  unsigned getParityBitsFor(unsigned dataBits) const {
+    if (m_dataWidth == 0) return 0;
+    return ((dataBits + m_dataWidth - 1) / m_dataWidth) * m_parityWidth;
+  }
+
+  //! @brief Correction capability (SECDED: corrects 1-bit per codeword)
+  unsigned getCorrectionCapability() const { return 1; }
+  //! @brief Detection capability (SECDED: detects 2-bit per codeword)
+  unsigned getDetectionCapability() const { return 2; }
+
+private:
+  unsigned m_dataWidth;    // data bits per codeword (default 128 for DDR5)
+  unsigned m_parityWidth;  // parity bits per codeword (default 8 for DDR5)
+  double m_latencyNs;      // decode latency per access (~1ns added to tRCD)
+  double m_energyPj;       // decode energy per access (minimal in-die logic)
 };
 
 #endif

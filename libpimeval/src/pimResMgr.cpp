@@ -6,6 +6,7 @@
 
 #include "pimResMgr.h"
 #include "pimDevice.h"
+#include "pimSim.h"
 #include "pimUtils.h"
 #include <algorithm>
 #include <cstdio>
@@ -149,6 +150,11 @@ void pimObjInfo::syncFromSimulatedMem()
             unsigned unpaddedWidth = pimUtils::getNumBitsOfDataType(m_dataType, PimBitWidth::SIM);
             int eccStatus = 0;
             decodedBits = eccStrategy->decode(paddedBits, unpaddedWidth, eccStatus);
+            if (eccStatus == 1) {
+              pimSim::get()->getStatsMgr()->recordEccCorrected();
+            } else if (eccStatus == 2) {
+              pimSim::get()->getStatsMgr()->recordEccUncorrectable();
+            }
           }
         }
         uint64_t functionalBits = 0;
@@ -176,6 +182,11 @@ void pimObjInfo::syncFromSimulatedMem(const pimRegion& region)
       if (eccStrategy) {
         int eccStatus = 0;
         decodedBits = eccStrategy->decode(paddedBits, unpaddedWidth, eccStatus);
+        if (eccStatus == 1) {
+          pimSim::get()->getStatsMgr()->recordEccCorrected();
+        } else if (eccStatus == 2) {
+          pimSim::get()->getStatsMgr()->recordEccUncorrectable();
+        }
       } else {
         decodedBits = pimUtils::signExt(paddedBits, m_dataType);
       }
@@ -257,6 +268,16 @@ pimResMgr::pimAlloc(PimAllocEnum allocType, uint64_t numElements, PimDataType da
 
 
   unsigned bitsPerElement = pimUtils::getNumBitsOfDataType(dataType, PimBitWidth::SIM);
+
+  // On-die ECC (ODECC) storage overhead — applied first (die-area cost, reduces effective capacity)
+  if (m_device->getConfig().isOdeccEnabled()) {
+    const pimEccOnDie* odecc = m_device->getConfig().getOdeccModel();
+    if (odecc) {
+      bitsPerElement += odecc->getParityBitsFor(bitsPerElement);
+    }
+  }
+
+  // Controller-level ECC storage overhead — applied after ODECC (controller sees decoded data width)
   if (m_device->getConfig().isEccEnabled()) {
     const pimEccStrategy* eccStrategy = m_device->getConfig().getEccStrategy();
     if (eccStrategy) {

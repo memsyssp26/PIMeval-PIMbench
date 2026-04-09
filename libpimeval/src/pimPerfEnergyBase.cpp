@@ -78,19 +78,35 @@ pimPerfEnergyBase::pimPerfEnergyBase(const pimPerfEnergyModelParams& params)
   m_tRAS = m_paramsDram.gettRAS();
 }
 
+//! @brief  Add on-die ECC (ODECC) overhead to a perfEnergy result.
+//!         ODECC fires on every DRAM row activation — both reads and writes.
+void
+pimPerfEnergyBase::addOdeccOverhead(pimeval::perfEnergy& pe, uint64_t numBytes) const
+{
+  const pimSimConfig& config = pimSim::get()->getConfig();
+  if (!config.isOdeccEnabled()) return;
+  const pimEccOnDie* odecc = config.getOdeccModel();
+  if (!odecc) return;
+
+  unsigned dataWidth = odecc->getDataWidth();
+  uint64_t numBlocks = (numBytes * 8 + dataWidth - 1) / dataWidth;
+  pe.m_msRuntime += numBlocks * odecc->getLatencyNs() / 1000000.0;
+  pe.m_mjEnergy += numBlocks * odecc->getEnergyPj() / 1000000000.0;
+}
+
 //! @brief  Perf energy model of data transfer between CPU memory and PIM memory
 pimeval::perfEnergy
 pimPerfEnergyBase::getPerfEnergyForBytesTransfer(PimCmdEnum cmdType, uint64_t numBytes) const
 {
-  //TODO: fine grain perf-energy modeling 
+  //TODO: fine grain perf-energy modeling
   double mjEnergy = 0.0;
   double msRead = 0.0;
   double msWrite = 0.0;
   double msCompute = 0.0;
   uint64_t mTotalOP = 0;
   double msRuntime = static_cast<double>(numBytes) / (m_typicalRankBW * m_numRanks * 1024.0 * 1024.0 * 1024.0 / 1000.0);
-  
-  // Add ECC overhead if enabled
+
+  // Add controller-level ECC overhead if enabled
   const pimSimConfig& config = pimSim::get()->getConfig();
   if (config.isEccEnabled()) {
     const pimEccStrategy* eccStrategy = config.getEccStrategy();
@@ -98,10 +114,10 @@ pimPerfEnergyBase::getPerfEnergyForBytesTransfer(PimCmdEnum cmdType, uint64_t nu
       unsigned granularity = config.getEccGranularity();
       if (granularity == 0) granularity = 64; // Default to 64 bits if not specified
       uint64_t numBlocks = (numBytes * 8 + granularity - 1) / granularity;
-      
+
       double eccLatencyMs = eccStrategy->getLatencyNs() / 1000000.0;
       double eccEnergyMj = eccStrategy->getEnergyPj() / 1000000000.0;
-      
+
       msRuntime += numBlocks * eccLatencyMs;
       mjEnergy += numBlocks * eccEnergyMj;
     }
@@ -133,7 +149,11 @@ pimPerfEnergyBase::getPerfEnergyForBytesTransfer(PimCmdEnum cmdType, uint64_t nu
       break;
     }
   }
-  return pimeval::perfEnergy(msRuntime, mjEnergy, msRead, msWrite, msCompute, mTotalOP);
+
+  // Add on-die ECC overhead (fires on every DRAM access during transfers)
+  pimeval::perfEnergy result(msRuntime, mjEnergy, msRead, msWrite, msCompute, mTotalOP);
+  addOdeccOverhead(result, numBytes);
+  return result;
 }
 
 //! @brief  Perf energy model of base class for func1 (placeholder)
@@ -271,5 +291,9 @@ pimPerfEnergyBase::getPerfEnergyForRowBitOp(PimCmdEnum cmdType, const pimObjInfo
       break;
   }
 
-  return pimeval::perfEnergy(msRuntime, mjEnergy, msRead, msWrite, msCompute, mTotalOP);
+  // Add ODECC overhead for row-level operations (each row activation fires ODECC)
+  pimeval::perfEnergy result(msRuntime, mjEnergy, msRead, msWrite, msCompute, mTotalOP);
+  unsigned numCols = pimSim::get()->getNumCols();
+  addOdeccOverhead(result, (uint64_t)numCores * numCols / 8);
+  return result;
 }

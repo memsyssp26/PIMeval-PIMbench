@@ -373,7 +373,14 @@ pimCmdFunc1::updateStats() const {
   pimPerfEnergyBase* perfModel = m_device->getPerfEnergyModel();
   const pimObjInfo& objSrc = resMgr->getObjInfo(m_src);
   const pimObjInfo& objDest = resMgr->getObjInfo(m_dest);
-  statsMgr->recordCmd(getName(), perfModel->getPerfEnergyForFunc1(m_cmdType, objSrc, objDest));
+  auto pe = perfModel->getPerfEnergyForFunc1(m_cmdType, objSrc, objDest);
+  // ODECC fires on every row activation during PIM compute: read src + write dest
+  // Use raw data width (ACTUAL), not padded width, since ODECC operates on raw data inside the die
+  unsigned rawBits = pimUtils::getNumBitsOfDataType(objSrc.getDataType(), PimBitWidth::ACTUAL);
+  uint64_t bytesTouched = (objSrc.getNumElements() + objDest.getNumElements())
+                          * (uint64_t)rawBits / 8;
+  perfModel->addOdeccOverhead(pe, bytesTouched);
+  statsMgr->recordCmd(getName(), pe);
   return PIM_OK;
 }
 
@@ -480,7 +487,16 @@ pimCmdFunc2::updateStats() const {
   pimResMgr* resMgr = m_device->getResMgr();
   pimStatsMgr* statsMgr = pimSim::get()->getStatsMgr();
   pimPerfEnergyBase* perfModel = m_device->getPerfEnergyModel();
-  statsMgr->recordCmd(getName(), perfModel->getPerfEnergyForFunc2(m_cmdType, resMgr->getObjInfo(m_src1), resMgr->getObjInfo(m_src2), resMgr->getObjInfo(m_dest)));
+  const pimObjInfo& objSrc1 = resMgr->getObjInfo(m_src1);
+  const pimObjInfo& objSrc2 = resMgr->getObjInfo(m_src2);
+  const pimObjInfo& objDest = resMgr->getObjInfo(m_dest);
+  auto pe = perfModel->getPerfEnergyForFunc2(m_cmdType, objSrc1, objSrc2, objDest);
+  // ODECC fires on every row activation: read src1 + read src2 + write dest
+  unsigned rawBits = pimUtils::getNumBitsOfDataType(objSrc1.getDataType(), PimBitWidth::ACTUAL);
+  uint64_t bytesTouched = (objSrc1.getNumElements() + objSrc2.getNumElements() + objDest.getNumElements())
+                          * (uint64_t)rawBits / 8;
+  perfModel->addOdeccOverhead(pe, bytesTouched);
+  statsMgr->recordCmd(getName(), pe);
   return PIM_OK;
 }
 
@@ -611,8 +627,13 @@ pimCmdPrefixSum::updateStats() const {
   pimStatsMgr* statsMgr = pimSim::get()->getStatsMgr();
   pimPerfEnergyBase* perfModel = m_device->getPerfEnergyModel();
   const pimObjInfo& objSrc = m_device->getResMgr()->getObjInfo(m_src);
-  statsMgr->recordCmd(getName(),
- perfModel->getPerfEnergyForPrefixSum(m_cmdType, objSrc));
+  auto pe = perfModel->getPerfEnergyForPrefixSum(m_cmdType, objSrc);
+  // ODECC: read src + write dest (same size)
+  unsigned rawBits = pimUtils::getNumBitsOfDataType(objSrc.getDataType(), PimBitWidth::ACTUAL);
+  uint64_t bytesTouched = objSrc.getNumElements() * 2
+                          * (uint64_t)rawBits / 8;
+  perfModel->addOdeccOverhead(pe, bytesTouched);
+  statsMgr->recordCmd(getName(), pe);
   return PIM_OK;
 }
 
@@ -639,8 +660,13 @@ pimCmdBroadcast::updateStats() const {
   pimStatsMgr* statsMgr = pimSim::get()->getStatsMgr();
   pimPerfEnergyBase* perfModel = m_device->getPerfEnergyModel();
   const pimObjInfo& objDest = m_device->getResMgr()->getObjInfo(m_dest);
-  statsMgr->recordCmd(getName(),
- perfModel->getPerfEnergyForBroadcast(m_cmdType, objDest));
+  auto pe = perfModel->getPerfEnergyForBroadcast(m_cmdType, objDest);
+  // ODECC: write dest
+  unsigned rawBits = pimUtils::getNumBitsOfDataType(objDest.getDataType(), PimBitWidth::ACTUAL);
+  uint64_t bytesTouched = objDest.getNumElements()
+                          * (uint64_t)rawBits / 8;
+  perfModel->addOdeccOverhead(pe, bytesTouched);
+  statsMgr->recordCmd(getName(), pe);
   return PIM_OK;
 }
 
@@ -697,8 +723,13 @@ pimCmdRotate::updateStats() const {
   pimStatsMgr* statsMgr = pimSim::get()->getStatsMgr();
   pimPerfEnergyBase* perfModel = m_device->getPerfEnergyModel();
   const pimObjInfo& objSrc = m_device->getResMgr()->getObjInfo(m_src);
-  statsMgr->recordCmd(getName(),
- perfModel->getPerfEnergyForRotate(m_cmdType, objSrc));
+  auto pe = perfModel->getPerfEnergyForRotate(m_cmdType, objSrc);
+  // ODECC: read + write all elements
+  unsigned rawBits = pimUtils::getNumBitsOfDataType(objSrc.getDataType(), PimBitWidth::ACTUAL);
+  uint64_t bytesTouched = objSrc.getNumElements() * 2
+                          * (uint64_t)rawBits / 8;
+  perfModel->addOdeccOverhead(pe, bytesTouched);
+  statsMgr->recordCmd(getName(), pe);
   return PIM_OK;
 }
 

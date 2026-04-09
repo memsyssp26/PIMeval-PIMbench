@@ -179,8 +179,8 @@ pimStatsMgr::resetStats()
   m_bitsCopiedMainToDevice = 0;
   m_bitsCopiedDeviceToMain = 0;
   m_bitsCopiedDeviceToDevice = 0;
-  m_numEccCorrected = 0;
-  m_numEccUncorrectable = 0;
+  m_numControllerEccCorrected = 0;
+  m_numControllerEccUncorrectable = 0;
 }
 
 //! @brief  Record estimated runtime and energy of a PIM command
@@ -308,9 +308,25 @@ pimPerfMon::~pimPerfMon()
 void
 pimStatsMgr::showEccStats() const
 {
-  if (m_numEccCorrected > 0 || m_numEccUncorrectable > 0) {
+  const pimSimConfig& config = pimSim::get()->getConfig();
+  bool odeccEnabled = config.isOdeccEnabled();
+  bool eccEnabled = config.isEccEnabled();
+
+  if (odeccEnabled || eccEnabled) {
     std::printf("ECC Reliability Stats:\n");
-    std::printf(" %45s : %llu events\n", "Bits Corrected (SECDED)", (unsigned long long)m_numEccCorrected);
-    std::printf(" %45s : %llu events\n", "Uncorrectable Errors", (unsigned long long)m_numEccUncorrectable);
+    if (odeccEnabled) {
+      const pimEccOnDie* odecc = config.getOdeccModel();
+      if (odecc) {
+        std::printf(" %45s : %u+%u SECDED, %.1fns/access, %.1fpJ/access\n",
+                    "On-Die ECC (analytical overhead)",
+                    odecc->getDataWidth(), odecc->getParityWidth(),
+                    odecc->getLatencyNs(), odecc->getEnergyPj());
+      }
+    }
+    if (eccEnabled) {
+      std::printf(" %45s : %llu corrected, %llu uncorrectable\n", "Controller ECC",
+                  (unsigned long long)m_numControllerEccCorrected,
+                  (unsigned long long)m_numControllerEccUncorrectable);
+    }
   }
 }

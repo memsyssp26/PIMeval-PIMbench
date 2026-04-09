@@ -48,8 +48,9 @@ public:
   void recordCopyDeviceToMain(uint64_t numBits, pimeval::perfEnergy mPerfEnergy);
   void recordCopyDeviceToDevice(uint64_t numBits, pimeval::perfEnergy mPerfEnergy);
 
-  void recordEccCorrected(uint64_t count = 1) { m_numEccCorrected += count; }
-  void recordEccUncorrectable(uint64_t count = 1) { m_numEccUncorrectable += count; }
+  // Controller-level ECC stats (encode/decode at host-device sync boundary)
+  void recordEccCorrected(uint64_t count = 1) { m_numControllerEccCorrected += count; }
+  void recordEccUncorrectable(uint64_t count = 1) { m_numControllerEccUncorrectable += count; }
 
 private:
   friend class pimPerfMon;
@@ -75,8 +76,8 @@ private:
   double m_mJCopiedDeviceToMain = 0.0;
   double m_mJCopiedDeviceToDevice = 0.0;
 
-  uint64_t m_numEccCorrected = 0;
-  uint64_t m_numEccUncorrectable = 0;
+  uint64_t m_numControllerEccCorrected = 0;
+  uint64_t m_numControllerEccUncorrectable = 0;
 
   bool m_isKernelTimerOn = false;
   double m_curApiMsEstRuntime = 0.0;

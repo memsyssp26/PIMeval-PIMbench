@@ -76,6 +76,12 @@ public:
 
   virtual pimeval::perfEnergy getPerfEnergyForRowBitOp(PimCmdEnum cmdType, const pimObjInfo& obj) const;
 
+  //! @brief  Add ODECC overhead to a perfEnergy result based on bytes touched.
+  //!         ODECC fires on every DRAM row activation (reads and writes).
+  //!         For transfers: pass numBytes once (encode or decode per direction).
+  //!         For PIM compute: pass total bytes read + written (ODECC fires on both).
+  void addOdeccOverhead(pimeval::perfEnergy& pe, uint64_t numBytes) const;
+
 protected:
   PimDeviceEnum m_simTarget;
   unsigned m_numRanks;
