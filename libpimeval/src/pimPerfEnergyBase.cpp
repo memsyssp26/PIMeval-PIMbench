@@ -6,6 +6,7 @@
 
 #include "pimPerfEnergyBase.h"
 #include "pimCmd.h"
+#include "pimScratchpad.h"
 #include "pimPerfEnergyBitSerial.h"
 #include "pimPerfEnergyFulcrum.h"
 #include "pimPerfEnergyBankLevel.h"
@@ -92,6 +93,31 @@ pimPerfEnergyBase::addOdeccOverhead(pimeval::perfEnergy& pe, uint64_t numBytes) 
   uint64_t numBlocks = (numBytes * 8 + dataWidth - 1) / dataWidth;
   pe.m_msRuntime += numBlocks * odecc->getLatencyNs() / 1000000.0;
   pe.m_mjEnergy += numBlocks * odecc->getEnergyPj() / 1000000000.0;
+}
+
+//! @brief  Add scratchpad/register-file ECC overhead to a perfEnergy result.
+//!         Fires on every SRAM word access during PIM computation (AiM buffer reads,
+//!         bit-serial register file operations, etc.).
+void
+pimPerfEnergyBase::addScratchpadEccOverhead(pimeval::perfEnergy& pe, uint64_t numBytes) const
+{
+  const pimSimConfig& config = pimSim::get()->getConfig();
+  if (!config.isScratchpadEccEnabled()) return;
+  const pimScratchpad* sp = config.getScratchpadModel();
+  if (!sp) return;
+
+  double latencyNs = 0.0;
+  double energyPj  = 0.0;
+  sp->getEccOverheadForBytes(numBytes, latencyNs, energyPj);
+
+  double latencyMs = latencyNs / m_nano_to_milli;
+  double energyMj  = energyPj  / m_pico_to_milli;
+
+  pe.m_msRuntime += latencyMs;
+  pe.m_mjEnergy  += energyMj;
+
+  // Accumulate totals in stats manager for reporting
+  pimSim::get()->getStatsMgr()->recordScratchpadEccOverhead(latencyMs, energyMj);
 }
 
 //! @brief  Perf energy model of data transfer between CPU memory and PIM memory
@@ -291,9 +317,18 @@ pimPerfEnergyBase::getPerfEnergyForRowBitOp(PimCmdEnum cmdType, const pimObjInfo
       break;
   }
 
+  unsigned numCols = pimSim::get()->getNumCols();
+
   // Add ODECC overhead for row-level operations (each row activation fires ODECC)
   pimeval::perfEnergy result(msRuntime, mjEnergy, msRead, msWrite, msCompute, mTotalOP);
-  unsigned numCols = pimSim::get()->getNumCols();
   addOdeccOverhead(result, (uint64_t)numCores * numCols / 8);
+
+  // Add scratchpad ECC overhead for register-file (rreg.*) operations.
+  // Each rreg op reads or writes one full register row — numCores registers each
+  // numCols bits wide.  SRAM SECDED fires once per word-width access.
+  if (pimCmd::getName(cmdType, "").find("rreg.") == 0) {
+    addScratchpadEccOverhead(result, (uint64_t)numCores * numCols / 8);
+  }
+
   return result;
 }

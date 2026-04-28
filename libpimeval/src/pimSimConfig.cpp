@@ -49,6 +49,13 @@ pimSimConfig::registerParams()
   m_registry[m_odeccParityWidth.getName()] = &m_odeccParityWidth;
   m_registry[m_odeccLatencyNs.getName()] = &m_odeccLatencyNs;
   m_registry[m_odeccEnergyPj.getName()] = &m_odeccEnergyPj;
+  m_registry[m_scratchpadEnabled.getName()] = &m_scratchpadEnabled;
+  m_registry[m_scratchpadSizeKb.getName()] = &m_scratchpadSizeKb;
+  m_registry[m_scratchpadWordBits.getName()] = &m_scratchpadWordBits;
+  m_registry[m_scratchpadEcc.getName()] = &m_scratchpadEcc;
+  m_registry[m_scratchpadEccType.getName()] = &m_scratchpadEccType;
+  m_registry[m_scratchpadEccLatencyNs.getName()] = &m_scratchpadEccLatencyNs;
+  m_registry[m_scratchpadEccEnergyPj.getName()] = &m_scratchpadEccEnergyPj;
 }
 
 //! @brief  Init PIMeval simulation configuration parameters at device creation
@@ -107,6 +114,7 @@ pimSimConfig::reset()
   }
   m_eccStrategy = nullptr;
   m_odeccModel = nullptr;
+  m_scratchpadModel = nullptr;
   // Preserve m_cliParams across reset — they represent explicit user intent
   // from pimInit(argc, argv) and should persist across device creation cycles.
   m_envParams.clear();
@@ -168,6 +176,17 @@ pimSimConfig::show() const
   if (m_eccEnabled.getValue()) {
     std::printf(" (%s, Granularity = %u, Layers = %u)",
               m_eccType.getValue().c_str(), m_eccGranularity.getValue(), m_eccLayers.getValue());
+  }
+  std::printf("\n");
+  std::printf("PIM-Config: Scratchpad = %s", m_scratchpadEnabled.getValue() ? "enabled" : "disabled");
+  if (m_scratchpadEnabled.getValue()) {
+    std::printf(" (%uKB, %u-bit words, ECC=%s",
+              m_scratchpadSizeKb.getValue(), m_scratchpadWordBits.getValue(),
+              m_scratchpadEcc.getValue() ? m_scratchpadEccType.getValue().c_str() : "off");
+    if (m_scratchpadEcc.getValue()) {
+      std::printf(", %.2fns/word, %.2fpJ/word", m_scratchpadEccLatencyNs.getValue(), m_scratchpadEccEnergyPj.getValue());
+    }
+    std::printf(")");
   }
   std::printf("\n");
   std::printf("----------------------------------------\n");
@@ -344,6 +363,16 @@ pimSimConfig::deriveConfig(PimDeviceEnum deviceType,
     m_odeccModel = std::make_unique<pimEccOnDie>(
       m_odeccDataWidth.getValue(), m_odeccParityWidth.getValue(),
       m_odeccLatencyNs.getValue(), m_odeccEnergyPj.getValue());
+  }
+
+  // Phase 11: Scratchpad / register-file ECC model creation
+  if (m_scratchpadEnabled.getValue()) {
+    m_scratchpadModel = std::make_unique<pimScratchpad>(
+      m_scratchpadSizeKb.getValue(),
+      m_scratchpadWordBits.getValue(),
+      m_scratchpadEccType.getValue(),
+      m_scratchpadEccLatencyNs.getValue(),
+      m_scratchpadEccEnergyPj.getValue());
   }
 
   show();

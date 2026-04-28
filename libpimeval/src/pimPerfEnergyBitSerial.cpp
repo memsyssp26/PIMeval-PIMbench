@@ -8,6 +8,7 @@
 #include "pimCmd.h"
 #include "pimPerfEnergyTables.h"
 #include "pimUtils.h"
+#include "pimSim.h"
 #include <cstdio>
 #include <cmath> // For log2()
 
@@ -175,6 +176,21 @@ pimPerfEnergyBitSerial::getPerfEnergyBitSerial(PimDeviceEnum deviceType, PimCmdE
   msLogic *= numPass;
   msRuntime *= numPass;
   mjEnergy *= numPass;
+
+  // Scratchpad ECC overhead for bit-serial register-file (rreg.*) logic operations.
+  // msLogic/m_tL gives total rreg.* op count (after numPass scaling).
+  // Each op touches one register row per region = numCols bits = numCols/8 bytes.
+  // Use regions().size() for core count (getNumCoreAvailable() is not set in pimObjInfo).
+  if (ok && m_tL > 0.0) {
+    unsigned numRegions = static_cast<unsigned>(objSrc1.getRegions().size());
+    unsigned numCols    = pimSim::get()->getNumCols();
+    uint64_t rregBytes  = static_cast<uint64_t>(msLogic / m_tL) * numRegions * numCols / 8;
+    pimeval::perfEnergy eccPe;
+    addScratchpadEccOverhead(eccPe, rregBytes);
+    msRuntime += eccPe.m_msRuntime;
+    mjEnergy  += eccPe.m_mjEnergy;
+  }
+
   return pimeval::perfEnergy(msRuntime, mjEnergy, msRead, msWrite, msLogic, totalOp);
 }
 

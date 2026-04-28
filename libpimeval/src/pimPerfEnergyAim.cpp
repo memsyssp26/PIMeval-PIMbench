@@ -179,5 +179,17 @@ pimeval::perfEnergy pimPerfEnergyAim::getPerfEnergyForMac(PimCmdEnum cmdType, co
   mjEnergy += perfEnergyBT.m_mjEnergy;
   mjEnergy += m_pBChip * m_numChipsPerRank * m_numRanks * msRuntime;
   totalOp = obj.getNumElements() * 2;
-  return pimeval::perfEnergy(msRuntime, mjEnergy, msRead, msWrite, msCompute, totalOp);
+
+  pimeval::perfEnergy result(msRuntime, mjEnergy, msRead, msWrite, msCompute, totalOp);
+
+  // Scratchpad ECC: the AiM global row buffer is SRAM — ECC fires on every GDL
+  // buffer read.  Each GDL iteration transfers GDLWidth bits from DRAM to the buffer
+  // (read) and the accumulation tree writes the partial sum back (write).
+  // We account for both directions: buffer read (gdlItr * GDLWidth bits) and
+  // accumulator writeback (same volume, 1 result word per core per pass).
+  uint64_t bufferBytesRead  = (uint64_t)gdlItr * m_GDLWidth / 8;
+  uint64_t bufferBytesWrite = (uint64_t)numCore * bitsPerElement / 8;
+  addScratchpadEccOverhead(result, bufferBytesRead + bufferBytesWrite);
+
+  return result;
 }

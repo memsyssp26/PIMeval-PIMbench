@@ -52,6 +52,14 @@ public:
   void recordEccCorrected(uint64_t count = 1) { m_numControllerEccCorrected += count; }
   void recordEccUncorrectable(uint64_t count = 1) { m_numControllerEccUncorrectable += count; }
 
+  // Scratchpad / register-file ECC stats (fires during in-memory computation)
+  void recordScratchpadEccCorrected(uint64_t count = 1) { m_numScratchpadEccCorrected += count; }
+  void recordScratchpadEccUncorrectable(uint64_t count = 1) { m_numScratchpadEccUncorrectable += count; }
+  void recordScratchpadEccOverhead(double latencyMs, double energyMj) {
+    m_scratchpadEccLatencyMs += latencyMs;
+    m_scratchpadEccEnergyMj  += energyMj;
+  }
+
 private:
   friend class pimPerfMon;
   void pimApiScopeStart();
@@ -78,6 +86,11 @@ private:
 
   uint64_t m_numControllerEccCorrected = 0;
   uint64_t m_numControllerEccUncorrectable = 0;
+
+  uint64_t m_numScratchpadEccCorrected = 0;
+  uint64_t m_numScratchpadEccUncorrectable = 0;
+  double   m_scratchpadEccLatencyMs = 0.0;
+  double   m_scratchpadEccEnergyMj  = 0.0;
 
   bool m_isKernelTimerOn = false;
   double m_curApiMsEstRuntime = 0.0;

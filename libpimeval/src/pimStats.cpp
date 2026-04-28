@@ -6,6 +6,7 @@
 
 #include "pimStats.h"
 #include "pimSim.h"
+#include "pimScratchpad.h"
 #include "pimUtils.h"
 #include <chrono>            // for chrono
 #include <cstdint>           // for uint64_t
@@ -181,14 +182,16 @@ pimStatsMgr::resetStats()
   m_bitsCopiedDeviceToDevice = 0;
   m_numControllerEccCorrected = 0;
   m_numControllerEccUncorrectable = 0;
+  m_numScratchpadEccCorrected = 0;
+  m_numScratchpadEccUncorrectable = 0;
+  m_scratchpadEccLatencyMs = 0.0;
+  m_scratchpadEccEnergyMj  = 0.0;
 }
 
 //! @brief  Record estimated runtime and energy of a PIM command
 void
 pimStatsMgr::recordCmd(const std::string& cmdName, pimeval::perfEnergy mPerfEnergy)
 {
-  // Always record if called, but debug print timer state
-  std::printf("PIM-Debug: recordCmd %s runtime=%f energy=%f timer=%d\n", cmdName.c_str(), mPerfEnergy.m_msRuntime, mPerfEnergy.m_mjEnergy, (int)m_isKernelTimerOn);
   auto& item = m_cmdPerf[cmdName];
   item.first++;
   item.second.m_msRuntime += mPerfEnergy.m_msRuntime;
@@ -309,10 +312,11 @@ void
 pimStatsMgr::showEccStats() const
 {
   const pimSimConfig& config = pimSim::get()->getConfig();
-  bool odeccEnabled = config.isOdeccEnabled();
-  bool eccEnabled = config.isEccEnabled();
+  bool odeccEnabled      = config.isOdeccEnabled();
+  bool eccEnabled        = config.isEccEnabled();
+  bool scratchpadEnabled = config.isScratchpadEccEnabled();
 
-  if (odeccEnabled || eccEnabled) {
+  if (odeccEnabled || eccEnabled || scratchpadEnabled) {
     std::printf("ECC Reliability Stats:\n");
     if (odeccEnabled) {
       const pimEccOnDie* odecc = config.getOdeccModel();
@@ -327,6 +331,22 @@ pimStatsMgr::showEccStats() const
       std::printf(" %45s : %llu corrected, %llu uncorrectable\n", "Controller ECC",
                   (unsigned long long)m_numControllerEccCorrected,
                   (unsigned long long)m_numControllerEccUncorrectable);
+    }
+    if (scratchpadEnabled) {
+      const pimScratchpad* sp = config.getScratchpadModel();
+      if (sp) {
+        std::printf(" %45s : %uKB, %u-bit words, %s, %.2fns/word, %.2fpJ/word\n",
+                    "Scratchpad ECC config",
+                    sp->getSizeKb(), sp->getWordBits(), sp->getEccType().c_str(),
+                    sp->getLatencyNs(), sp->getEnergyPj());
+        std::printf(" %45s : %llu corrected, %llu uncorrectable\n",
+                    "Scratchpad ECC events",
+                    (unsigned long long)m_numScratchpadEccCorrected,
+                    (unsigned long long)m_numScratchpadEccUncorrectable);
+        std::printf(" %45s : %.6f ms, %.9f mJ\n",
+                    "Scratchpad ECC overhead (total)",
+                    m_scratchpadEccLatencyMs, m_scratchpadEccEnergyMj);
+      }
     }
   }
 }

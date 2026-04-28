@@ -82,6 +82,12 @@ public:
   //!         For PIM compute: pass total bytes read + written (ODECC fires on both).
   void addOdeccOverhead(pimeval::perfEnergy& pe, uint64_t numBytes) const;
 
+  //! @brief  Add scratchpad/register-file ECC overhead to a perfEnergy result.
+  //!         Fires on every SRAM word access (read or write) during PIM computation.
+  //!         numBytes is the total data accessed in the scratchpad for this operation.
+  //!         Also accumulates totals in pimStatsMgr for reporting.
+  void addScratchpadEccOverhead(pimeval::perfEnergy& pe, uint64_t numBytes) const;
+
 protected:
   PimDeviceEnum m_simTarget;
   unsigned m_numRanks;

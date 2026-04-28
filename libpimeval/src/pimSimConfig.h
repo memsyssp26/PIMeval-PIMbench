@@ -10,6 +10,7 @@
 #include "libpimeval.h"
 #include "pimEccStrategy.h"
 #include "pimEcc.h"
+#include "pimScratchpad.h"
 #include "pimUtils.h"
 #include <string>
 #include <map>
@@ -183,6 +184,14 @@ public:
   double getOdeccLatencyNs() const { return m_odeccLatencyNs.getValue(); }
   double getOdeccEnergyPj() const { return m_odeccEnergyPj.getValue(); }
   const pimEccOnDie* getOdeccModel() const { return m_odeccModel.get(); }
+  bool isScratchpadEccEnabled() const { return m_scratchpadEnabled.getValue() && m_scratchpadEcc.getValue(); }
+  bool isScratchpadEnabled() const { return m_scratchpadEnabled.getValue(); }
+  unsigned getScratchpadSizeKb() const { return m_scratchpadSizeKb.getValue(); }
+  unsigned getScratchpadWordBits() const { return m_scratchpadWordBits.getValue(); }
+  std::string getScratchpadEccType() const { return m_scratchpadEccType.getValue(); }
+  double getScratchpadEccLatencyNs() const { return m_scratchpadEccLatencyNs.getValue(); }
+  double getScratchpadEccEnergyPj() const { return m_scratchpadEccEnergyPj.getValue(); }
+  const pimScratchpad* getScratchpadModel() const { return m_scratchpadModel.get(); }
 
   enum pimDebugFlags
   {
@@ -252,6 +261,18 @@ private:
   pimConfigParam<double> m_odeccLatencyNs{"odecc_latency_ns", 1.0, "ODECC decode latency in nanoseconds"};
   pimConfigParam<double> m_odeccEnergyPj{"odecc_energy_pj", 0.5, "ODECC decode energy in picojoules"};
   std::unique_ptr<pimEccOnDie> m_odeccModel;
+
+  // Scratchpad / Register-File ECC - models on-chip SRAM ECC during PIM computation
+  // Applies to architectures with an SRAM scratchpad (e.g., AiM global row buffer)
+  // or a register file (e.g., bit-serial row registers / sense-amp row).
+  pimConfigParam<bool> m_scratchpadEnabled{"scratchpad", false, "Enable on-chip scratchpad/register-file modeling"};
+  pimConfigParam<unsigned> m_scratchpadSizeKb{"scratchpad_size_kb", 64, "Scratchpad capacity in KB (default: 64, matching UPMEM WRAM)", [](unsigned v){ return v > 0; }};
+  pimConfigParam<unsigned> m_scratchpadWordBits{"scratchpad_word_bits", 32, "SRAM word width in bits (ECC granularity)", [](unsigned v){ return v >= 8 && (v & (v-1)) == 0; }};
+  pimConfigParam<bool> m_scratchpadEcc{"scratchpad_ecc", true, "Enable ECC on the scratchpad/register file (requires scratchpad=true)"};
+  pimConfigParam<std::string> m_scratchpadEccType{"scratchpad_ecc_type", "secded", "Scratchpad ECC scheme: secded or none"};
+  pimConfigParam<double> m_scratchpadEccLatencyNs{"scratchpad_ecc_latency_ns", 0.5, "Scratchpad ECC decode latency per word access (ns)"};
+  pimConfigParam<double> m_scratchpadEccEnergyPj{"scratchpad_ecc_energy_pj", 0.3, "Scratchpad ECC logic energy per word access (pJ)"};
+  std::unique_ptr<pimScratchpad> m_scratchpadModel;
 
   // Store original parameters for extension purpose
   std::map<std::string, std::string> m_cliParams;
