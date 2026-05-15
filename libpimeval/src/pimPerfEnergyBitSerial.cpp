@@ -178,13 +178,22 @@ pimPerfEnergyBitSerial::getPerfEnergyBitSerial(PimDeviceEnum deviceType, PimCmdE
   mjEnergy *= numPass;
 
   // Scratchpad ECC overhead for bit-serial register-file (rreg.*) logic operations.
-  // msLogic/m_tL gives total rreg.* op count (after numPass scaling).
-  // Each op touches one register row per region = numCols bits = numCols/8 bytes.
-  // Use regions().size() for core count (getNumCoreAvailable() is not set in pimObjInfo).
+  // Two models, selected by scratchpad_ecc_output_only:
+  //   default     — charge per logic op: msLogic/m_tL ops × numRegions × numCols/8 bytes
+  //   output-only — charge per output element written: numElements × bitsPerElement/8 bytes
+  //                 More physically realistic: intermediate partial products are transient;
+  //                 only the final output register needs ECC protection on write.
   if (ok && m_tL > 0.0) {
+    const pimSimConfig& cfg = pimSim::get()->getConfig();
     unsigned numRegions = static_cast<unsigned>(objSrc1.getRegions().size());
     unsigned numCols    = pimSim::get()->getNumCols();
-    uint64_t rregBytes  = static_cast<uint64_t>(msLogic / m_tL) * numRegions * numCols / 8;
+    uint64_t rregBytes;
+    if (cfg.isScratchpadEccOutputOnly()) {
+      rregBytes = objDest.getNumElements()
+                  * static_cast<uint64_t>(objDest.getBitsPerElement(PimBitWidth::SIM)) / 8;
+    } else {
+      rregBytes = static_cast<uint64_t>(msLogic / m_tL) * numRegions * numCols / 8;
+    }
     pimeval::perfEnergy eccPe;
     addScratchpadEccOverhead(eccPe, rregBytes);
     msRuntime += eccPe.m_msRuntime;
@@ -516,17 +525,68 @@ pimPerfEnergyBitSerial::getPerfEnergyForRotate(PimCmdEnum cmdType, const pimObjI
 }
 
 //! @brief  Perf energy model of bit-serial PIM for prefix sum
+//!
+//! Models a Hillis-Steele parallel scan: ceil(log2(elemsPerCore)) rounds,
+//! each round = one element-shift (copy) + one conditional add.
+//! Cost per round is derived from the INT32 ADD table entry (64R/32W/97L)
+//! plus a same-width copy (32R/32W/0L), scaled to the actual element bit
+//! width.  Inter-subarray carry propagation is not modeled (minor vs.
+//! the dominant intra-core scan cost).
 pimeval::perfEnergy
 pimPerfEnergyBitSerial::getPerfEnergyForPrefixSum(PimCmdEnum cmdType, const pimObjInfo& obj) const
 {
-  double msRuntime = 0.0;
-  double mjEnergy = 0.0;
-  double msRead = 0.0;
-  double msWrite = 0.0;
-  double msCompute = 0.0;
-  uint64_t totalOp = 0;
-  printf("PIM-Warning: Perf energy model not available for PIM command %s\n", pimCmd::getName(cmdType, "").c_str());
-  return pimeval::perfEnergy(msRuntime, mjEnergy, msRead, msWrite, msCompute, totalOp);
+  unsigned numRegions       = static_cast<unsigned>(obj.getRegions().size());
+  uint64_t numElements      = obj.getNumElements();
+  unsigned bitsPerElement   = obj.getBitsPerElement(PimBitWidth::SIM);
+  unsigned maxElemsPerRegion = obj.getMaxElementsPerRegion();
+
+  if (numRegions == 0 || bitsPerElement == 0) {
+    return pimeval::perfEnergy();
+  }
+
+  uint64_t elemsPerCore = (numElements + numRegions - 1) / numRegions;
+  unsigned numRounds = (elemsPerCore > 1)
+      ? static_cast<unsigned>(std::ceil(std::log2(static_cast<double>(elemsPerCore))))
+      : 1;
+
+  // Row-op counts per round, normalised to the INT32 reference (32 bits).
+  // copy (shift by step): 32R + 32W + 0L
+  // add  (ripple-carry):  64R + 32W + 97L
+  // combined per round:   96R + 64W + 97L  (at 32-bit width)
+  const double kBitsRef = 32.0;
+  double scale = static_cast<double>(bitsPerElement) / kBitsRef;
+
+  double numR = 96.0 * scale * numRounds;
+  double numW = 64.0 * scale * numRounds;
+  double numL = 97.0 * scale * numRounds;
+
+  double msRead    = m_tR * numR;
+  double msWrite   = m_tW * numW;
+  double msLogic   = m_tL * numL;
+  double msRuntime = msRead + msWrite + msLogic;
+
+  double mjEnergy  = ((m_eL * numL * maxElemsPerRegion)
+                    + (m_eAP * numR + m_eAP * numW))
+                   * numRegions;
+  mjEnergy += m_pBChip * m_numChipsPerRank * m_numRanks * msRuntime;
+
+  // Scratchpad ECC — same two-model approach as getPerfEnergyBitSerial().
+  if (m_tL > 0.0) {
+    const pimSimConfig& cfg = pimSim::get()->getConfig();
+    uint64_t rregBytes;
+    if (cfg.isScratchpadEccOutputOnly()) {
+      rregBytes = numElements * static_cast<uint64_t>(bitsPerElement) / 8;
+    } else {
+      unsigned numCols = pimSim::get()->getNumCols();
+      rregBytes = static_cast<uint64_t>(msLogic / m_tL) * numRegions * numCols / 8;
+    }
+    pimeval::perfEnergy eccPe;
+    addScratchpadEccOverhead(eccPe, rregBytes);
+    msRuntime += eccPe.m_msRuntime;
+    mjEnergy  += eccPe.m_mjEnergy;
+  }
+
+  return pimeval::perfEnergy(msRuntime, mjEnergy, msRead, msWrite, msLogic, numElements);
 }
 
 pimeval::perfEnergy

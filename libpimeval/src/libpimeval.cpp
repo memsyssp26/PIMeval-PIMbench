@@ -503,6 +503,15 @@ pimResetStats()
   pimSim::get()->resetStats();
 }
 
+//! @brief  Fill a PimStats struct with the current accumulated stats
+void
+pimGetStats(PimStats* stats)
+{
+  if (stats) {
+    pimSim::get()->getStatsMgr()->fillPimStats(*stats);
+  }
+}
+
 PimStatus
 pimFuse(PimProg prog)
 {

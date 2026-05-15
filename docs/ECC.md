@@ -78,6 +78,60 @@ ECC Reliability Stats:
                                 Controller ECC : 0 corrected, 0 uncorrectable
 ```
 
+## Tier 3: Scratchpad/Register-File ECC
+
+PIM architectures that use on-chip SRAM (scratchpad memories, register files, or global row buffers) face a separate reliability concern from DRAM. Tier 3 models ECC protection for these on-chip structures.
+
+### When It Fires
+- On every **read or write to the scratchpad** during PIM compute operations
+- For bit-serial architectures: on every register-file access during bitwise computation
+- For AiM-style architectures: on global buffer accesses during GDL iterations
+
+### Configuration
+
+| Parameter | Environment Variable | CLI Argument | Default | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `scratchpad` | `PIMEVAL_SCRATCHPAD` | `--pim-scratchpad` | `false` | Enable scratchpad modeling |
+| `scratchpad_size_kb` | `PIMEVAL_SCRATCHPAD_SIZE_KB` | `--pim-scratchpad_size_kb` | `64` | Capacity in KB |
+| `scratchpad_word_bits` | `PIMEVAL_SCRATCHPAD_WORD_BITS` | `--pim-scratchpad_word_bits` | `32` | SRAM word width (ECC granularity) |
+| `scratchpad_ecc` | `PIMEVAL_SCRATCHPAD_ECC` | `--pim-scratchpad_ecc` | `true` | Enable ECC on scratchpad |
+| `scratchpad_ecc_type` | `PIMEVAL_SCRATCHPAD_ECC_TYPE` | `--pim-scratchpad_ecc_type` | `secded` | Scheme: `secded` or `none` |
+| `scratchpad_ecc_latency_ns` | `PIMEVAL_SCRATCHPAD_ECC_LATENCY_NS` | `--pim-scratchpad_ecc_latency_ns` | `0.5` | Decode latency per word (ns) |
+| `scratchpad_ecc_energy_pj` | `PIMEVAL_SCRATCHPAD_ECC_ENERGY_PJ` | `--pim-scratchpad_ecc_energy_pj` | `0.3` | Logic energy per word (pJ) |
+
+### Stats Output
+When scratchpad ECC is enabled, a third tier appears in the stats:
+```
+ECC Reliability Stats:
+                      Scratchpad ECC (compute) :  0.002064    0.000001238  [64KB, 32-bit words, secded, 0.50ns/word, 0.30pJ/word, 0 corrected]
+```
+
+## Bit Error Rate (BER) Model
+
+PIMeval includes an analytical BER model (`pimBerModel`) that estimates expected corrected and uncorrectable error counts based on the raw bit error rate and codeword parameters.
+
+### Model
+Uses a Poisson approximation to the binomial distribution. For a codeword of `w` bits with BER `p`:
+- Expected bit errors per codeword: `lambda = w * p`
+- P(correctable) = P(exactly 1 error) = `lambda * exp(-lambda)` (SECDED corrects single-bit)
+- P(uncorrectable) = P(2+ errors) = `1 - exp(-lambda) * (1 + lambda)`
+
+### Configuration
+
+| Parameter | Environment Variable | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `dram_ber` | `PIMEVAL_DRAM_BER` | `1e-10` | Raw DRAM BER per bit (before on-die ECC) |
+| `sram_ber` | `PIMEVAL_SRAM_BER` | `1e-15` | SRAM BER per bit (scratchpad/register file) |
+
+### Typical BER Values
+- **DRAM (DDR5/HBM3 raw)**: ~1e-10 per bit
+- **SRAM (scratchpad/register file)**: ~1e-15 per bit
+
+The BER model results appear in the ODECC stats line:
+```
+On-Die ECC (ODECC) : 0.000032  0.000000016  [128+8 SECDED, 1.0ns, 0.5pJ, ~4.35e-07 corrected, ~2.37e-15 uncorrectable]
+```
+
 ### Fault Injection
 Use `pimInjectBurstError` to verify reliability:
 ```cpp

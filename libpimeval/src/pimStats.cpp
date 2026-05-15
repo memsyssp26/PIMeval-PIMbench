@@ -182,6 +182,12 @@ pimStatsMgr::resetStats()
   m_bitsCopiedDeviceToDevice = 0;
   m_numControllerEccCorrected = 0;
   m_numControllerEccUncorrectable = 0;
+  m_controllerEccOverheadMs = 0.0;
+  m_controllerEccOverheadMj = 0.0;
+  m_odeccOverheadMs = 0.0;
+  m_odeccOverheadMj = 0.0;
+  m_numOdeccCorrected = 0.0;
+  m_numOdeccUncorrectable = 0.0;
   m_numScratchpadEccCorrected = 0;
   m_numScratchpadEccUncorrectable = 0;
   m_scratchpadEccLatencyMs = 0.0;
@@ -318,35 +324,71 @@ pimStatsMgr::showEccStats() const
 
   if (odeccEnabled || eccEnabled || scratchpadEnabled) {
     std::printf("ECC Reliability Stats:\n");
+    std::printf(" %45s   %14s %14s\n", "Tier", "Overhead(ms)", "Overhead(mJ)");
+
     if (odeccEnabled) {
       const pimEccOnDie* odecc = config.getOdeccModel();
       if (odecc) {
-        std::printf(" %45s : %u+%u SECDED, %.1fns/access, %.1fpJ/access\n",
-                    "On-Die ECC (analytical overhead)",
+        std::printf(" %45s : %14.6f %14.9f  [%u+%u SECDED, %.1fns/access, %.1fpJ/access, "
+                    "~%.2e corrected, ~%.2e uncorrectable]\n",
+                    "On-Die ECC (ODECC)",
+                    m_odeccOverheadMs, m_odeccOverheadMj,
                     odecc->getDataWidth(), odecc->getParityWidth(),
-                    odecc->getLatencyNs(), odecc->getEnergyPj());
+                    odecc->getLatencyNs(), odecc->getEnergyPj(),
+                    m_numOdeccCorrected, m_numOdeccUncorrectable);
       }
     }
     if (eccEnabled) {
-      std::printf(" %45s : %llu corrected, %llu uncorrectable\n", "Controller ECC",
+      std::printf(" %45s : %14.6f %14.9f  [%llu corrected, %llu uncorrectable]\n",
+                  "Controller ECC (boundary)",
+                  m_controllerEccOverheadMs, m_controllerEccOverheadMj,
                   (unsigned long long)m_numControllerEccCorrected,
                   (unsigned long long)m_numControllerEccUncorrectable);
     }
     if (scratchpadEnabled) {
       const pimScratchpad* sp = config.getScratchpadModel();
       if (sp) {
-        std::printf(" %45s : %uKB, %u-bit words, %s, %.2fns/word, %.2fpJ/word\n",
-                    "Scratchpad ECC config",
+        std::printf(" %45s : %14.6f %14.9f  [%uKB, %u-bit words, %s, %.2fns/word, %.2fpJ/word, %llu corrected]\n",
+                    "Scratchpad ECC (compute)",
+                    m_scratchpadEccLatencyMs, m_scratchpadEccEnergyMj,
                     sp->getSizeKb(), sp->getWordBits(), sp->getEccType().c_str(),
-                    sp->getLatencyNs(), sp->getEnergyPj());
-        std::printf(" %45s : %llu corrected, %llu uncorrectable\n",
-                    "Scratchpad ECC events",
-                    (unsigned long long)m_numScratchpadEccCorrected,
-                    (unsigned long long)m_numScratchpadEccUncorrectable);
-        std::printf(" %45s : %.6f ms, %.9f mJ\n",
-                    "Scratchpad ECC overhead (total)",
-                    m_scratchpadEccLatencyMs, m_scratchpadEccEnergyMj);
+                    sp->getLatencyNs(), sp->getEnergyPj(),
+                    (unsigned long long)m_numScratchpadEccCorrected);
       }
     }
+    // Total ECC overhead across all active tiers
+    double totalEccMs = (odeccEnabled ? m_odeccOverheadMs : 0.0)
+                      + (eccEnabled   ? m_controllerEccOverheadMs : 0.0)
+                      + (scratchpadEnabled ? m_scratchpadEccLatencyMs : 0.0);
+    double totalEccMj = (odeccEnabled ? m_odeccOverheadMj : 0.0)
+                      + (eccEnabled   ? m_controllerEccOverheadMj : 0.0)
+                      + (scratchpadEnabled ? m_scratchpadEccEnergyMj : 0.0);
+    std::printf(" %45s : %14.6f %14.9f\n", "ECC TOTAL ---------", totalEccMs, totalEccMj);
   }
+}
+
+//! @brief  Fill a PimStats struct for programmatic access
+void
+pimStatsMgr::fillPimStats(PimStats& out) const
+{
+  out.copyH2DMs         = m_elapsedTimeCopiedMainToDevice;
+  out.copyH2DMj         = m_mJCopiedMainToDevice;
+  out.copyD2HMs         = m_elapsedTimeCopiedDeviceToMain;
+  out.copyD2HMj         = m_mJCopiedDeviceToMain;
+  out.copyD2DMs         = m_elapsedTimeCopiedDeviceToDevice;
+  out.copyD2DMj         = m_mJCopiedDeviceToDevice;
+
+  out.computeMs = 0.0;
+  out.computeMj = 0.0;
+  for (const auto& it : m_cmdPerf) {
+    out.computeMs += it.second.second.m_msRuntime;
+    out.computeMj += it.second.second.m_mjEnergy;
+  }
+
+  out.odeccMs           = m_odeccOverheadMs;
+  out.odeccMj           = m_odeccOverheadMj;
+  out.controllerEccMs   = m_controllerEccOverheadMs;
+  out.controllerEccMj   = m_controllerEccOverheadMj;
+  out.scratchpadEccMs   = m_scratchpadEccLatencyMs;
+  out.scratchpadEccMj   = m_scratchpadEccEnergyMj;
 }

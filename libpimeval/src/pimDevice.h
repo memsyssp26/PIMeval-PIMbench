@@ -85,6 +85,19 @@ public:
   pimCore& getCore(PimCoreId coreId) { return m_cores[coreId]; }
   PimStatus executeCmd(std::unique_ptr<pimCmd> cmd);
 
+#ifdef DRAMSIM3_INTEG
+  // Initialise DRAMSim3 instances — called from commonInit().
+  void initDramSim3();
+
+  // Simulate a bulk DRAM transfer of numBytes through one rank's DRAMSim3
+  // model, then scale timing and energy to m_numRanks parallel ranks.
+  // Returns a perfEnergy with cycle-accurate runtime (ms) and IDD/VDD-derived
+  // energy (mJ).  Uses m_dramNextAddr internally to ensure consecutive calls
+  // never alias the same DRAM rows (prevents row-buffer state bleed).
+  pimeval::perfEnergy dramsim3SimulateTransfer(uint64_t numBytes,
+                                               bool     isWrite);
+#endif
+
 protected:
   // Helpers for subclasses
   bool commonInit(unsigned numCores, unsigned numRows, unsigned numCols, unsigned bufferSize);
@@ -101,9 +114,12 @@ protected:
   std::vector<pimCore> m_cores;
 
 #ifdef DRAMSIM3_INTEG
-  dramsim3::PIMCPU* m_hostMemory = nullptr;
   dramsim3::PIMCPU* m_deviceMemory = nullptr;
-  dramsim3::Config* m_deviceMemoryConfig = nullptr;
+  // Monotonically advancing synthetic address used by dramsim3SimulateTransfer.
+  // Each call advances past the range it used so consecutive transfers never
+  // alias the same DRAMSim3 addresses and row-buffer state from one transfer
+  // cannot bleed into the next.
+  uint64_t m_dramNextAddr = 0;
 #endif
 };
 

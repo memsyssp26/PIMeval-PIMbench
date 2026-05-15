@@ -126,12 +126,38 @@ struct PimDeviceProperties {
 typedef int PimCoreId;
 typedef int PimObjId;
 
+// Programmatic stats snapshot — filled by pimGetStats().
+// All runtime values are in milliseconds; all energy values are in millijoules.
+// ECC overhead fields represent the incremental cost added by each protection
+// tier on top of raw DRAM timing; they are already included in the copy/compute
+// totals above.
+typedef struct {
+  // Data-copy path
+  double copyH2DMs;        // Host-to-device copy runtime
+  double copyH2DMj;        // Host-to-device copy energy
+  double copyD2HMs;        // Device-to-host copy runtime
+  double copyD2HMj;        // Device-to-host copy energy
+  double copyD2DMs;        // Device-to-device copy runtime
+  double copyD2DMj;        // Device-to-device copy energy
+  // PIM compute path (sum over all PIM commands)
+  double computeMs;
+  double computeMj;
+  // Per-tier ECC overhead (incremental cost of each protection layer)
+  double odeccMs;          // On-die ECC (JEDEC 128+8 SECDED, fires per row activation)
+  double odeccMj;
+  double controllerEccMs;  // Controller/boundary ECC (fires at H2D/D2H; D2H-only when ecc_readout_only=1)
+  double controllerEccMj;
+  double scratchpadEccMs;  // Scratchpad/register-file ECC (fires per SRAM word access during compute)
+  double scratchpadEccMj;
+} PimStats;
+
 // PIMeval simulation
 // CPU runtime between start/end timer will be measured for modeling DRAM refresh
 void pimStartTimer();
 void pimEndTimer();
 void pimShowStats();
 void pimResetStats();
+void pimGetStats(PimStats* stats);
 bool pimIsAnalysisMode();
 PimStatus pimInit(int* argc, char*** argv);
 

@@ -45,6 +45,7 @@ public:
   bool isDebug(pimSimConfig::pimDebugFlags flag) const { return m_config->getDebug() & flag; }
 
   bool isInit() const { return m_device != nullptr; }
+  pimDevice* getDevice() const { return m_device.get(); }
   PimStatus pimInit(int* argc, char*** argv);
 
   unsigned getNumCores() const;

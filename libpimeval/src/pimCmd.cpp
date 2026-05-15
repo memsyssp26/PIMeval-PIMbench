@@ -239,6 +239,88 @@ pimCmdCopy::sanityCheck() const
   return PIM_OK;
 }
 
+// Helper used in DRAMSIM3_INTEG builds: returns a perfEnergy whose runtime and
+// energy both come from DRAMSim3 (cycle-accurate timing + IDD/VDD energy model),
+// with ODECC and controller-ECC overheads layered on top exactly as the
+// analytical model does in getPerfEnergyForBytesTransfer().
+// Falls back to the analytical model if DRAMSim3 is not available (e.g. the
+// device was created before initDramSim3 succeeded).
+#ifdef DRAMSIM3_INTEG
+static pimeval::perfEnergy
+perfEnergyWithDramSim3(pimDevice* device, pimPerfEnergyBase* perfModel,
+                       PimCmdEnum cmdType, uint64_t numBytes)
+{
+  pimeval::perfEnergy pe;
+  switch (cmdType) {
+    case PimCmdEnum::COPY_H2D:
+      pe = device->dramsim3SimulateTransfer(numBytes, /*isWrite=*/true);
+      break;
+    case PimCmdEnum::COPY_D2H:
+      pe = device->dramsim3SimulateTransfer(numBytes, /*isWrite=*/false);
+      break;
+    case PimCmdEnum::COPY_D2D: {
+      // Intra-device: read from one region, write to another.
+      // dramsim3SimulateTransfer advances m_dramNextAddr between calls so the
+      // write phase starts at fresh DRAM rows (no row-buffer hits from the read).
+      // The two phases are sequential on the same channel, so add their times.
+      pimeval::perfEnergy rd = device->dramsim3SimulateTransfer(numBytes, /*isWrite=*/false);
+      pimeval::perfEnergy wr = device->dramsim3SimulateTransfer(numBytes, /*isWrite=*/true);
+      // If either phase timed out or DRAMSim3 was unavailable, fall back entirely.
+      if (rd.m_msRuntime == 0.0 || wr.m_msRuntime == 0.0)
+        return perfModel->getPerfEnergyForBytesTransfer(cmdType, numBytes);
+      pe.m_msRuntime = rd.m_msRuntime + wr.m_msRuntime;
+      pe.m_mjEnergy  = rd.m_mjEnergy  + wr.m_mjEnergy;
+      break;
+    }
+    default:
+      break;
+  }
+
+  // If DRAMSim3 was not initialised or timed out (pe is zero), fall back.
+  // The analytical path already applies all ECC overheads, so return early.
+  if (pe.m_msRuntime == 0.0) {
+    return perfModel->getPerfEnergyForBytesTransfer(cmdType, numBytes);
+  }
+
+  // ── Layer ECC overheads on top of the DRAMSim3 physical transfer result ──
+  //
+  // DRAMSim3 models only the raw DRAM protocol (tRCD, tCAS, tRP, IDD currents).
+  // It knows nothing about:
+  //   1. On-die ECC (ODECC): latency + energy per row activation, added by the
+  //      DRAM chip itself.  The analytical model applies this via addOdeccOverhead.
+  //   2. Controller ECC computation: time + energy for the memory controller to
+  //      encode/decode ECC on every block crossing the bus.
+  //
+  // We must add both here to keep DRAMSim3 and analytical results comparable.
+
+  // 1. On-die ECC overhead (fires on every DRAM row activation)
+  perfModel->addOdeccOverhead(pe, numBytes);
+
+  // 2. Controller ECC computation overhead.
+  // In readout-only mode, ECC is applied only on the D2H path.
+  const pimSimConfig& simCfg = pimSim::get()->getConfig();
+  bool applyControllerEcc = simCfg.isEccEnabled();
+  if (applyControllerEcc && simCfg.isEccReadoutOnly()) {
+    applyControllerEcc = (cmdType == PimCmdEnum::COPY_D2H);
+  }
+  if (applyControllerEcc) {
+    const pimEccStrategy* eccStrategy = simCfg.getEccStrategy();
+    if (eccStrategy) {
+      unsigned granularity = simCfg.getEccGranularity();
+      if (granularity == 0) granularity = 64;
+      uint64_t numBlocks = (numBytes * 8 + granularity - 1) / granularity;
+      double eccMs = static_cast<double>(numBlocks) * eccStrategy->getLatencyNs() / 1.0e6;
+      double eccMj = static_cast<double>(numBlocks) * eccStrategy->getEnergyPj()  / 1.0e9;
+      pe.m_msRuntime += eccMs;
+      pe.m_mjEnergy  += eccMj;
+      pimSim::get()->getStatsMgr()->recordControllerEccOverhead(eccMs, eccMj);
+    }
+  }
+
+  return pe;
+}
+#endif
+
 PimStatus
 pimCmdCopy::updateStats() const {
   pimResMgr* resMgr = m_device->getResMgr();
@@ -249,17 +331,29 @@ pimCmdCopy::updateStats() const {
     if (numElements == 0) numElements = resMgr->getObjInfo(m_dest).getNumElements();
     unsigned bitsPerElem = resMgr->getObjInfo(m_dest).getBitsPerElement(PimBitWidth::HOST);
     uint64_t numBytes = (numElements * bitsPerElem + 7) / 8;
+#ifdef DRAMSIM3_INTEG
+    statsMgr->recordCopyMainToDevice(numBytes * 8, perfEnergyWithDramSim3(m_device, perfModel, m_cmdType, numBytes));
+#else
     statsMgr->recordCopyMainToDevice(numBytes * 8, perfModel->getPerfEnergyForBytesTransfer(m_cmdType, numBytes));
+#endif
   } else if (m_cmdType == PimCmdEnum::COPY_D2H) {
     if (numElements == 0) numElements = resMgr->getObjInfo(m_src).getNumElements();
     unsigned bitsPerElem = resMgr->getObjInfo(m_src).getBitsPerElement(PimBitWidth::HOST);
     uint64_t numBytes = (numElements * bitsPerElem + 7) / 8;
+#ifdef DRAMSIM3_INTEG
+    statsMgr->recordCopyDeviceToMain(numBytes * 8, perfEnergyWithDramSim3(m_device, perfModel, m_cmdType, numBytes));
+#else
     statsMgr->recordCopyDeviceToMain(numBytes * 8, perfModel->getPerfEnergyForBytesTransfer(m_cmdType, numBytes));
+#endif
   } else if (m_cmdType == PimCmdEnum::COPY_D2D) {
     if (numElements == 0) numElements = resMgr->getObjInfo(m_src).getNumElements();
     unsigned bitsPerElem = resMgr->getObjInfo(m_src).getBitsPerElement(PimBitWidth::HOST);
     uint64_t numBytes = (numElements * bitsPerElem + 7) / 8;
+#ifdef DRAMSIM3_INTEG
+    statsMgr->recordCopyDeviceToDevice(numBytes * 8, perfEnergyWithDramSim3(m_device, perfModel, m_cmdType, numBytes));
+#else
     statsMgr->recordCopyDeviceToDevice(numBytes * 8, perfModel->getPerfEnergyForBytesTransfer(m_cmdType, numBytes));
+#endif
   }
   return PIM_OK;
 }
@@ -585,7 +679,11 @@ PimStatus
 pimCmdCond::updateStats() const { return PIM_OK; }
 
 PimStatus
-pimCmdPrefixSum::execute() { return computeAllRegions(1); }
+pimCmdPrefixSum::execute() {
+  computeAllRegions(1);
+  updateStats();
+  return PIM_OK;
+}
 PimStatus
 pimCmdPrefixSum::sanityCheck() const { return PIM_OK; }
 PimStatus

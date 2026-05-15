@@ -51,6 +51,18 @@ public:
   // Controller-level ECC stats (encode/decode at host-device sync boundary)
   void recordEccCorrected(uint64_t count = 1) { m_numControllerEccCorrected += count; }
   void recordEccUncorrectable(uint64_t count = 1) { m_numControllerEccUncorrectable += count; }
+  void recordControllerEccOverhead(double latencyMs, double energyMj) {
+    m_controllerEccOverheadMs += latencyMs;
+    m_controllerEccOverheadMj += energyMj;
+  }
+
+  // On-die ECC stats (fires on every DRAM row activation)
+  void recordOdeccOverhead(double latencyMs, double energyMj) {
+    m_odeccOverheadMs += latencyMs;
+    m_odeccOverheadMj += energyMj;
+  }
+  void recordOdeccCorrected(double count) { m_numOdeccCorrected += count; }
+  void recordOdeccUncorrectable(double count) { m_numOdeccUncorrectable += count; }
 
   // Scratchpad / register-file ECC stats (fires during in-memory computation)
   void recordScratchpadEccCorrected(uint64_t count = 1) { m_numScratchpadEccCorrected += count; }
@@ -59,6 +71,9 @@ public:
     m_scratchpadEccLatencyMs += latencyMs;
     m_scratchpadEccEnergyMj  += energyMj;
   }
+
+  // Programmatic stats extraction
+  void fillPimStats(PimStats& out) const;
 
 private:
   friend class pimPerfMon;
@@ -86,6 +101,13 @@ private:
 
   uint64_t m_numControllerEccCorrected = 0;
   uint64_t m_numControllerEccUncorrectable = 0;
+  double   m_controllerEccOverheadMs = 0.0;
+  double   m_controllerEccOverheadMj = 0.0;
+
+  double   m_odeccOverheadMs = 0.0;
+  double   m_odeccOverheadMj = 0.0;
+  double   m_numOdeccCorrected = 0.0;      // expected corrected errors (BER model)
+  double   m_numOdeccUncorrectable = 0.0;  // expected uncorrectable errors (BER model)
 
   uint64_t m_numScratchpadEccCorrected = 0;
   uint64_t m_numScratchpadEccUncorrectable = 0;

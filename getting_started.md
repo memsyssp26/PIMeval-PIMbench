@@ -9,6 +9,9 @@ This branch adds ECC simulation support to PIMeval, allowing researchers to mode
 ### New Capabilities
 
 - **Three ECC schemes**: SECDED (single-error-correct, double-error-detect), Reed-Solomon (symbol-level detection), and CRC-32 (detection only)
+- **Two-tier DRAM ECC model**: On-die ECC (ODECC, DDR5/HBM3-informed) fires on every row activation; controller-level ECC fires at transfer boundaries
+- **Scratchpad/register-file ECC**: Analytical overhead model for on-chip SRAM in PIM architectures (bit-serial register files, AiM global buffers)
+- **Bit Error Rate (BER) model**: Poisson-based analytical model for estimating corrected/uncorrectable error counts given raw BER
 - **Configurable parameters**: ECC type, granularity (block size), recursive layers, latency, and energy per operation
 - **Three configuration methods**: CLI arguments (`--pim-*`), config files (`.cfg` profiles), and environment variables (`PIMEVAL_*`)
 - **Performance/energy modeling**: ECC overhead is automatically included in runtime and energy estimates
@@ -22,6 +25,7 @@ This branch adds ECC simulation support to PIMeval, allowing researchers to mode
 | `libpimeval/src/pimEcc.h` | Core ECC encode/decode implementations (SECDED, RS, CRC-32) |
 | `libpimeval/src/pimEccStrategy.h/.cpp` | Strategy pattern for polymorphic ECC dispatch + factory |
 | `libpimeval/src/pimMemoryTier.h/.cpp` | Memory tier abstraction (functional vs bit-mapped) |
+| `libpimeval/src/pimBerModel.h` | Bit error rate analytical model (Poisson approximation) |
 | `configs/ecc_profiles/*.cfg` | Pre-built ECC configuration profiles |
 | `tests/ecc/` | ECC unit, integration, and hardening test suites |
 | `demo_ecc_features.sh` | Interactive demo script |
@@ -214,6 +218,35 @@ When ECC is enabled, errors are detected/corrected during `pimCopyDeviceToHost()
        |
        +-- pimPerfEnergyBase        -- adds ECC latency/energy to stats
 ```
+
+## Scratchpad/Register-File ECC
+
+PIM architectures with on-chip SRAM (scratchpad memories, register files, global row buffers) have a separate ECC tier. Enable it with:
+
+```bash
+./vec-add.out --pim-scratchpad=1 --pim-scratchpad_ecc=1 --pim-scratchpad_ecc_type=secded -l 1024
+```
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `scratchpad` | `false` | Enable scratchpad modeling |
+| `scratchpad_size_kb` | `64` | Capacity in KB |
+| `scratchpad_word_bits` | `32` | SRAM word width (ECC granularity) |
+| `scratchpad_ecc` | `true` | Enable ECC on scratchpad (requires `scratchpad=true`) |
+| `scratchpad_ecc_type` | `secded` | Scheme: `secded` or `none` |
+| `scratchpad_ecc_latency_ns` | `0.5` | Decode latency per word access (ns) |
+| `scratchpad_ecc_energy_pj` | `0.3` | Logic energy per word access (pJ) |
+
+## BER (Bit Error Rate) Model
+
+The BER model estimates expected corrected and uncorrectable error counts using a Poisson approximation. Configure with:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `dram_ber` | `1e-10` | Raw DRAM BER per bit (before on-die ECC) |
+| `sram_ber` | `1e-15` | SRAM BER per bit (scratchpad/register file) |
+
+BER results appear in the ODECC stats line when on-die ECC is enabled.
 
 ## Known Limitations
 

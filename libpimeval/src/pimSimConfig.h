@@ -32,6 +32,12 @@ public:
   virtual bool fromString(const std::string& val) = 0;
   virtual std::string toString() const = 0;
   virtual void reset() = 0;
+  // True if this param was set from env/config/CLI (not just the API arg default).
+  // Used by Phase 4 of deriveConfig to let external settings win over hardcoded API defaults.
+  bool wasSetExternally() const { return m_wasSetExternally; }
+  void markSetExternally()      { m_wasSetExternally = true; }
+protected:
+  bool m_wasSetExternally = false;
 };
 
 /**
@@ -64,7 +70,7 @@ public:
     return true;
   }
 
-  void reset() override { m_value = m_defaultValue; }
+  void reset() override { m_value = m_defaultValue; m_wasSetExternally = false; }
 
   bool fromString(const std::string& val) override {
     if constexpr (std::is_same_v<T, double>) {
@@ -172,6 +178,7 @@ public:
   unsigned getDebug() const { return m_debug.getValue(); }
   bool isLoadBalanced() const { return m_loadBalanced.getValue(); }
   bool isEccEnabled() const { return m_eccEnabled.getValue(); }
+  bool isEccReadoutOnly() const { return m_eccReadoutOnly.getValue(); }
   unsigned getEccGranularity() const { return m_eccGranularity.getValue(); }
   std::string getEccType() const { return m_eccType.getValue(); }
   unsigned getEccLayers() const { return m_eccLayers.getValue(); }
@@ -185,6 +192,7 @@ public:
   double getOdeccEnergyPj() const { return m_odeccEnergyPj.getValue(); }
   const pimEccOnDie* getOdeccModel() const { return m_odeccModel.get(); }
   bool isScratchpadEccEnabled() const { return m_scratchpadEnabled.getValue() && m_scratchpadEcc.getValue(); }
+  bool isScratchpadEccOutputOnly() const { return m_scratchpadEccOutputOnly.getValue(); }
   bool isScratchpadEnabled() const { return m_scratchpadEnabled.getValue(); }
   unsigned getScratchpadSizeKb() const { return m_scratchpadSizeKb.getValue(); }
   unsigned getScratchpadWordBits() const { return m_scratchpadWordBits.getValue(); }
@@ -192,6 +200,9 @@ public:
   double getScratchpadEccLatencyNs() const { return m_scratchpadEccLatencyNs.getValue(); }
   double getScratchpadEccEnergyPj() const { return m_scratchpadEccEnergyPj.getValue(); }
   const pimScratchpad* getScratchpadModel() const { return m_scratchpadModel.get(); }
+  std::string getPreset() const { return m_preset.getValue(); }
+  double getDramBer() const { return m_dramBer.getValue(); }
+  double getSramBer() const { return m_sramBer.getValue(); }
 
   enum pimDebugFlags
   {
@@ -247,6 +258,7 @@ private:
   pimConfigParam<unsigned> m_debug{"debug", 0, "Debug flags bitmask"};
   pimConfigParam<bool> m_loadBalanced{"load_balanced", true, "If true, distribute data across all available cores"};
   pimConfigParam<bool> m_eccEnabled{"ecc", false, "Enable/disable Error Correction Code modeling"};
+  pimConfigParam<bool> m_eccReadoutOnly{"ecc_readout_only", false, "Apply controller ECC only on D2H (readout) path; skip H2D and D2D"};
   pimConfigParam<unsigned> m_eccGranularity{"ecc_granularity", 64, "ECC protection block size in bits", [](unsigned v){ return v == 0 || (v >= 8 && (v & (v-1)) == 0); }};
   pimConfigParam<std::string> m_eccType{"ecc_type", "secded", "ECC scheme type (secded, rs, crc32)"};
   pimConfigParam<unsigned> m_eccLayers{"ecc_layers", 1, "Number of recursive ECC layers", [](unsigned v){ return v > 0 && v <= 4; }};
@@ -272,12 +284,25 @@ private:
   pimConfigParam<std::string> m_scratchpadEccType{"scratchpad_ecc_type", "secded", "Scratchpad ECC scheme: secded or none"};
   pimConfigParam<double> m_scratchpadEccLatencyNs{"scratchpad_ecc_latency_ns", 0.5, "Scratchpad ECC decode latency per word access (ns)"};
   pimConfigParam<double> m_scratchpadEccEnergyPj{"scratchpad_ecc_energy_pj", 0.3, "Scratchpad ECC logic energy per word access (pJ)"};
+  pimConfigParam<bool> m_scratchpadEccOutputOnly{"scratchpad_ecc_output_only", false,
+      "If true, charge scratchpad ECC only on final output writes (one word per element) "
+      "rather than on every intermediate register-file access during bit-serial logic. "
+      "More physically realistic for element-wise ops where intermediate values are transient."};
   std::unique_ptr<pimScratchpad> m_scratchpadModel;
+
+  // Bit error rate (BER) for reliability modeling
+  // Used by pimBerModel to compute expected corrected/uncorrectable error counts.
+  pimConfigParam<double> m_dramBer{"dram_ber", 1e-10, "Raw DRAM bit error rate per bit (before on-die ECC)"};
+  pimConfigParam<double> m_sramBer{"sram_ber", 1e-15, "SRAM bit error rate per bit (scratchpad/register file)"};
+
+  // Memory-technology preset (ddr5, hbm3, lpddr5) — lowest-priority defaults
+  pimConfigParam<std::string> m_preset{"preset", "", "Memory technology preset (ddr5, hbm3, lpddr5)"};
 
   // Store original parameters for extension purpose
   std::map<std::string, std::string> m_cliParams;
   std::map<std::string, std::string> m_envParams;
   std::map<std::string, std::string> m_cfgParams;
+  std::map<std::string, std::string> m_presetParams;  // populated from PIMEVAL_PRESET
   bool m_isInit;
 };
 

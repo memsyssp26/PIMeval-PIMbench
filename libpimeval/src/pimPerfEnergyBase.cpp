@@ -5,6 +5,7 @@
 // See the LICENSE file in the root of this repository for more details.
 
 #include "pimPerfEnergyBase.h"
+#include "pimBerModel.h"
 #include "pimCmd.h"
 #include "pimScratchpad.h"
 #include "pimPerfEnergyBitSerial.h"
@@ -90,9 +91,20 @@ pimPerfEnergyBase::addOdeccOverhead(pimeval::perfEnergy& pe, uint64_t numBytes) 
   if (!odecc) return;
 
   unsigned dataWidth = odecc->getDataWidth();
+  unsigned codewordBits = dataWidth + odecc->getParityWidth();
   uint64_t numBlocks = (numBytes * 8 + dataWidth - 1) / dataWidth;
-  pe.m_msRuntime += numBlocks * odecc->getLatencyNs() / 1000000.0;
-  pe.m_mjEnergy += numBlocks * odecc->getEnergyPj() / 1000000000.0;
+  double addedMs = numBlocks * odecc->getLatencyNs() / 1000000.0;
+  double addedMj = numBlocks * odecc->getEnergyPj() / 1000000000.0;
+  pe.m_msRuntime += addedMs;
+  pe.m_mjEnergy  += addedMj;
+  pimSim::get()->getStatsMgr()->recordOdeccOverhead(addedMs, addedMj);
+  // BER-based expected error counts (Poisson approximation for SECDED)
+  double dramBer = config.getDramBer();
+  if (dramBer > 0.0) {
+    auto berResult = pimBerModel::simulate(dramBer, numBytes * 8, codewordBits);
+    pimSim::get()->getStatsMgr()->recordOdeccCorrected(berResult.corrected);
+    pimSim::get()->getStatsMgr()->recordOdeccUncorrectable(berResult.uncorrectable);
+  }
 }
 
 //! @brief  Add scratchpad/register-file ECC overhead to a perfEnergy result.
@@ -118,6 +130,19 @@ pimPerfEnergyBase::addScratchpadEccOverhead(pimeval::perfEnergy& pe, uint64_t nu
 
   // Accumulate totals in stats manager for reporting
   pimSim::get()->getStatsMgr()->recordScratchpadEccOverhead(latencyMs, energyMj);
+
+  // BER-based expected error counts for scratchpad SRAM
+  double sramBer = config.getSramBer();
+  if (sramBer > 0.0) {
+    unsigned wordBits = config.getScratchpadWordBits();
+    // SECDED for SRAM: assume 6 parity bits for 32-bit word (SEC-DED standard)
+    unsigned parityBits = (wordBits <= 32) ? 6 : (wordBits <= 64) ? 7 : 8;
+    auto berResult = pimBerModel::simulate(sramBer, numBytes * 8, wordBits + parityBits);
+    pimSim::get()->getStatsMgr()->recordScratchpadEccCorrected(
+        static_cast<uint64_t>(berResult.corrected));
+    pimSim::get()->getStatsMgr()->recordScratchpadEccUncorrectable(
+        static_cast<uint64_t>(berResult.uncorrectable));
+  }
 }
 
 //! @brief  Perf energy model of data transfer between CPU memory and PIM memory
@@ -132,20 +157,33 @@ pimPerfEnergyBase::getPerfEnergyForBytesTransfer(PimCmdEnum cmdType, uint64_t nu
   uint64_t mTotalOP = 0;
   double msRuntime = static_cast<double>(numBytes) / (m_typicalRankBW * m_numRanks * 1024.0 * 1024.0 * 1024.0 / 1000.0);
 
-  // Add controller-level ECC overhead if enabled
+  // Add controller-level ECC overhead if enabled.
+  // In readout-only mode, ECC is only applied on the D2H path; H2D and D2D skip it.
   const pimSimConfig& config = pimSim::get()->getConfig();
-  if (config.isEccEnabled()) {
+  bool applyControllerEcc = config.isEccEnabled();
+  if (applyControllerEcc && config.isEccReadoutOnly()) {
+    applyControllerEcc = (cmdType == PimCmdEnum::COPY_D2H);
+  }
+  if (applyControllerEcc) {
     const pimEccStrategy* eccStrategy = config.getEccStrategy();
     if (eccStrategy) {
       unsigned granularity = config.getEccGranularity();
-      if (granularity == 0) granularity = 64; // Default to 64 bits if not specified
+      if (granularity == 0) granularity = 64;
       uint64_t numBlocks = (numBytes * 8 + granularity - 1) / granularity;
 
-      double eccLatencyMs = eccStrategy->getLatencyNs() / 1000000.0;
-      double eccEnergyMj = eccStrategy->getEnergyPj() / 1000000000.0;
+      double eccLatencyMs = static_cast<double>(numBlocks) * eccStrategy->getLatencyNs() / 1000000.0;
+      double eccEnergyMj  = static_cast<double>(numBlocks) * eccStrategy->getEnergyPj()  / 1000000000.0;
 
-      msRuntime += numBlocks * eccLatencyMs;
-      mjEnergy += numBlocks * eccEnergyMj;
+      msRuntime += eccLatencyMs;
+      mjEnergy  += eccEnergyMj;
+      pimSim::get()->getStatsMgr()->recordControllerEccOverhead(eccLatencyMs, eccEnergyMj);
+      // BER-based expected error counts for controller ECC
+      double dramBer = config.getDramBer();
+      if (dramBer > 0.0) {
+        auto berResult = pimBerModel::simulate(dramBer, numBytes * 8, granularity);
+        pimSim::get()->getStatsMgr()->recordEccCorrected(static_cast<uint64_t>(berResult.corrected));
+        pimSim::get()->getStatsMgr()->recordEccUncorrectable(static_cast<uint64_t>(berResult.uncorrectable));
+      }
     }
   }
 
